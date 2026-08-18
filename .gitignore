@@ -1,0 +1,16 @@
+.DS_Store
+*.swp
+*.swo
+*~
+.env
+.arize-tmp-traces/
+
+.claude/
+.cursor/
+.codex/
+
+test-results/
+__pycache__/
+**/__pycache__/
+*.pyc
+.idea/
