@@ -18,59 +18,13 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import pathlib
 import re
 import sys
 
+from distribution import CATALOG_REL, resolve_distribution_root
+
 _DISAMBIG_RE = re.compile(r"^(.*?)\s*\((.*)\)\s*$")
-_CATALOG_REL = pathlib.Path("docs/troubleshooting/selfhosted-alerts-table.csv")
-_MARKER_ARIZE_SH = "arize.sh"
-
-
-def _is_distribution_root(path: pathlib.Path) -> bool:
-    return (path / _CATALOG_REL).is_file() and (path / _MARKER_ARIZE_SH).is_file()
-
-
-def resolve_distribution_root(
-    explicit: pathlib.Path | None = None,
-    skill_dir: pathlib.Path | None = None,
-) -> pathlib.Path:
-    """Resolve unpacked arize-distribution root.
-
-    Order: explicit flag → ARIZE_DISTRIBUTION_ROOT → ARIZE_DIST.
-    Never walk the filesystem — operators often keep multiple releases.
-    """
-    del skill_dir  # kept for call-site compatibility; discovery by walk is forbidden
-
-    if explicit is not None:
-        root = explicit.expanduser().resolve()
-        if not _is_distribution_root(root):
-            raise SystemExit(
-                f"Not a valid Arize distribution root (missing "
-                f"{_CATALOG_REL} and/or {_MARKER_ARIZE_SH}): {root}"
-            )
-        return root
-
-    for env_name in ("ARIZE_DISTRIBUTION_ROOT", "ARIZE_DIST"):
-        raw = os.environ.get(env_name, "").strip()
-        if not raw:
-            continue
-        root = pathlib.Path(raw).expanduser().resolve()
-        if not _is_distribution_root(root):
-            raise SystemExit(
-                f"{env_name}={root} is not a valid Arize distribution root "
-                f"(expected {_CATALOG_REL} and {_MARKER_ARIZE_SH})"
-            )
-        return root
-
-    raise SystemExit(
-        "Distribution root not set.\n"
-        "Pass --distribution-root or export ARIZE_DISTRIBUTION_ROOT to the "
-        "unpacked arize-distribution directory that matches this cluster "
-        "(the folder that contains arize.sh and docs/). "
-        "Do not guess among multiple release directories."
-    )
 
 
 def resolve_catalog_path(
@@ -86,7 +40,7 @@ def resolve_catalog_path(
         return path, distribution_root
 
     root = resolve_distribution_root(distribution_root, skill_dir=skill_dir)
-    path = root / _CATALOG_REL
+    path = root / CATALOG_REL
     return path, root
 
 
@@ -198,8 +152,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--distribution-root",
+        "--docs-root",
+        dest="distribution_root",
         type=pathlib.Path,
-        help="Unpacked arize-distribution directory",
+        help="Unpacked arize-distribution directory (or its docs/ folder)",
     )
     parser.add_argument(
         "--csv",

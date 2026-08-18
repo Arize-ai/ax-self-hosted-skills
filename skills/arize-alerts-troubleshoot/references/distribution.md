@@ -58,6 +58,16 @@ test -f "$ARIZE_DISTRIBUTION_ROOT/docs/troubleshooting/selfhosted-alerts-table.c
 python3 "$SKILL_ROOT/scripts/catalog-lookup.py" --print-distribution-root
 ```
 
+A valid root must contain **both** `arize.sh` and
+`docs/troubleshooting/selfhosted-alerts-table.csv`. Env vars
+(`ARIZE_DISTRIBUTION_ROOT` / `ARIZE_DIST`) must point at that unpack root.
+
+**Flag exception:** `--distribution-root` / `--docs-root` may instead point at
+the unpack's bare `docs/` directory when
+`docs/troubleshooting/selfhosted-alerts-table.csv` exists under it. Scripts
+then resolve the parent as the distribution root. Prefer setting the env var
+to the real unpack root so version checks (`arize.sh`, operator chart) still
+work.
 ### Values file
 
 Treat **`$ARIZE_DISTRIBUTION_ROOT/values.yaml`** as the install values for this

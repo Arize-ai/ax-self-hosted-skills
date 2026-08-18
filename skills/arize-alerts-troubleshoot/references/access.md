@@ -43,7 +43,9 @@ curl -s -o /dev/null -w "%{http_code}\n" "$AM/api/v2/status"
 1. **Configured ingress / UI URLs** — if `values.yaml` exposes Prometheus or
    Alertmanager (`alertsBaseUrl`, monitoring ingress, etc.), use those HTTPS
    bases directly (still include any `/prometheus` or `/alertmanager` path the
-   ingress uses).
+   ingress uses). `prom-alerts.sh` / `am-query.sh` verify TLS for non-localhost
+   HTTPS; pass `--insecure` (or `CURL_INSECURE=1`) only when you must skip
+   verification. Localhost port-forwards still use `-k` automatically.
 2. **Port-forward** (typical default):
 
    ```bash

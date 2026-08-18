@@ -37,23 +37,47 @@ Usage:
   am-query.sh --url <alertmanager-url> --groups
 
 Environment:
-  AM_URL or AM   Default Alertmanager base URL if --url is omitted
+  AM_URL or AM       Default Alertmanager base URL if --url is omitted
+  CURL_INSECURE=1    Force curl -k for HTTPS (also enabled via --insecure)
 
 Examples:
   am-query.sh --url http://localhost:9093/alertmanager --firing
   AM=http://localhost:9093/alertmanager am-query.sh --firing --json
   # Bare http://localhost:9093 also works — the script detects /alertmanager when needed.
+  # HTTPS to real ingress verifies TLS by default; use --insecure only if needed.
 EOF
   exit 1
 }
 
+# -k (insecure TLS) only for localhost tunnels, or when explicitly opted in.
+# Real ingress URLs must verify certificates unless --insecure / CURL_INSECURE=1.
 curl_flags() {
   local url="$1"
-  if [[ "${url}" == https://* ]]; then
-    echo "-sk"
-  else
+  local insecure="${2:-0}"
+  if [[ "${url}" != https://* ]]; then
     echo "-s"
+    return
   fi
+  if [[ "${insecure}" == "1" || "${CURL_INSECURE:-}" == "1" ]]; then
+    echo "-sk"
+    return
+  fi
+  local host="${url#https://}"
+  host="${host%%/*}"
+  if [[ "${host}" == \[* ]]; then
+    host="${host#\[}"
+    host="${host%%\]*}"
+  else
+    host="${host%%:*}"
+  fi
+  case "${host}" in
+    localhost|127.0.0.1|::1)
+      echo "-sk"
+      ;;
+    *)
+      echo "-s"
+      ;;
+  esac
 }
 
 normalize_url() {
@@ -64,8 +88,9 @@ normalize_url() {
 # On-prem Alertmanager is often served under /alertmanager.
 resolve_am_base() {
   local base="$1"
+  local insecure="${2:-0}"
   local flags
-  flags="$(curl_flags "${base}")"
+  flags="$(curl_flags "${base}" "${insecure}")"
   local code
   # shellcheck disable=SC2086
   code="$(curl ${flags} -o /dev/null -w '%{http_code}' --max-time 10 \
@@ -95,8 +120,9 @@ resolve_am_base() {
 am_get() {
   local base="$1"
   local path="$2"
+  local insecure="${3:-0}"
   local flags
-  flags="$(curl_flags "${base}")"
+  flags="$(curl_flags "${base}" "${insecure}")"
 
   local body
   # Intentionally unquoted flags: expands to -s or -sk.
@@ -144,6 +170,7 @@ main() {
   local mode=""
   local filter=""
   local as_json=""
+  local insecure=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -166,6 +193,10 @@ main() {
         as_json="json"
         shift
         ;;
+      --insecure)
+        insecure=1
+        shift
+        ;;
       --help|-h)
         usage
         ;;
@@ -179,29 +210,29 @@ main() {
   require_nonempty "${am_url}" "Alertmanager URL (--url, AM_URL, or AM)"
   require_nonempty "${mode}" "mode (--firing, --dump, --filter, --status, --silences, --groups)"
   am_url="$(normalize_url "${am_url}")"
-  am_url="$(resolve_am_base "${am_url}")"
+  am_url="$(resolve_am_base "${am_url}" "${insecure}")"
 
   local raw
   case "${mode}" in
     --firing)
-      raw="$(am_get "${am_url}" "/api/v2/alerts?active=true")"
+      raw="$(am_get "${am_url}" "/api/v2/alerts?active=true" "${insecure}")"
       summarize_alerts "${raw}" "${as_json}"
       ;;
     --dump)
-      am_get "${am_url}" "/api/v2/alerts"
+      am_get "${am_url}" "/api/v2/alerts" "${insecure}"
       ;;
     --filter)
-      raw="$(am_get "${am_url}" "/api/v2/alerts?filter=$(printf '%s' "${filter}" | jq -sRr @uri)")"
+      raw="$(am_get "${am_url}" "/api/v2/alerts?filter=$(printf '%s' "${filter}" | jq -sRr @uri)" "${insecure}")"
       summarize_alerts "${raw}" "${as_json}"
       ;;
     --status)
-      am_get "${am_url}" "/api/v2/status" | jq .
+      am_get "${am_url}" "/api/v2/status" "${insecure}" | jq .
       ;;
     --silences)
-      am_get "${am_url}" "/api/v2/silences" | jq .
+      am_get "${am_url}" "/api/v2/silences" "${insecure}" | jq .
       ;;
     --groups)
-      am_get "${am_url}" "/api/v2/alerts/groups" | jq .
+      am_get "${am_url}" "/api/v2/alerts/groups" "${insecure}" | jq .
       ;;
     *)
       die "Unhandled mode: ${mode}"

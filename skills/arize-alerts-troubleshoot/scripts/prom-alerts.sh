@@ -32,22 +32,46 @@ Usage:
 
 Environment:
   PROM_URL or PROM   Default Prometheus base URL if --url is omitted
+  CURL_INSECURE=1    Force curl -k for HTTPS (also enabled via --insecure)
 
 Examples:
   prom-alerts.sh --url http://localhost:9090/prometheus --firing
   PROM=http://localhost:9090/prometheus prom-alerts.sh --firing --json
   # Bare http://localhost:9090 also works — the script detects /prometheus when needed.
+  # HTTPS to real ingress verifies TLS by default; use --insecure only if needed.
 EOF
   exit 1
 }
 
+# -k (insecure TLS) only for localhost tunnels, or when explicitly opted in.
+# Real ingress URLs must verify certificates unless --insecure / CURL_INSECURE=1.
 curl_flags() {
   local url="$1"
-  if [[ "${url}" == https://* ]]; then
-    echo "-sk"
-  else
+  local insecure="${2:-0}"
+  if [[ "${url}" != https://* ]]; then
     echo "-s"
+    return
   fi
+  if [[ "${insecure}" == "1" || "${CURL_INSECURE:-}" == "1" ]]; then
+    echo "-sk"
+    return
+  fi
+  local host="${url#https://}"
+  host="${host%%/*}"
+  if [[ "${host}" == \[* ]]; then
+    host="${host#\[}"
+    host="${host%%\]*}"
+  else
+    host="${host%%:*}"
+  fi
+  case "${host}" in
+    localhost|127.0.0.1|::1)
+      echo "-sk"
+      ;;
+    *)
+      echo "-s"
+      ;;
+  esac
 }
 
 normalize_url() {
@@ -59,8 +83,9 @@ normalize_url() {
 # If the caller passed a host root, rewrite to include the subpath when needed.
 resolve_prom_base() {
   local base="$1"
+  local insecure="${2:-0}"
   local flags
-  flags="$(curl_flags "${base}")"
+  flags="$(curl_flags "${base}" "${insecure}")"
   local code
   # shellcheck disable=SC2086
   code="$(curl ${flags} -o /dev/null -w '%{http_code}' --max-time 10 \
@@ -90,8 +115,9 @@ resolve_prom_base() {
 prom_get() {
   local base="$1"
   local path="$2"
+  local insecure="${3:-0}"
   local flags
-  flags="$(curl_flags "${base}")"
+  flags="$(curl_flags "${base}" "${insecure}")"
 
   local body
   # Intentionally unquoted flags: expands to -s or -sk.
@@ -105,8 +131,9 @@ prom_get() {
 prom_query() {
   local base="$1"
   local query="$2"
+  local insecure="${3:-0}"
   local flags
-  flags="$(curl_flags "${base}")"
+  flags="$(curl_flags "${base}" "${insecure}")"
   local encoded
   encoded="$(printf '%s' "${query}" | jq -sRr @uri)"
 
@@ -161,6 +188,7 @@ main() {
   local mode=""
   local query=""
   local as_json=""
+  local insecure=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -183,6 +211,10 @@ main() {
         as_json="json"
         shift
         ;;
+      --insecure)
+        insecure=1
+        shift
+        ;;
       --help|-h)
         usage
         ;;
@@ -196,22 +228,22 @@ main() {
   require_nonempty "${prom_url}" "Prometheus URL (--url, PROM_URL, or PROM)"
   require_nonempty "${mode}" "mode (--firing, --rules, --query)"
   prom_url="$(normalize_url "${prom_url}")"
-  prom_url="$(resolve_prom_base "${prom_url}")"
+  prom_url="$(resolve_prom_base "${prom_url}" "${insecure}")"
 
   local raw
   case "${mode}" in
     --firing)
-      raw="$(prom_query "${prom_url}" 'ALERTS{alertstate="firing"}')"
+      raw="$(prom_query "${prom_url}" 'ALERTS{alertstate="firing"}' "${insecure}")"
       local status
       status="$(jq -r '.status // "error"' <<<"${raw}")"
       [[ "${status}" == "success" ]] || die "Prometheus returned status=${status}: ${raw}"
       summarize_firing "${raw}" "${as_json}"
       ;;
     --rules)
-      prom_get "${prom_url}" "/api/v1/rules" | jq .
+      prom_get "${prom_url}" "/api/v1/rules" "${insecure}" | jq .
       ;;
     --query)
-      raw="$(prom_query "${prom_url}" "${query}")"
+      raw="$(prom_query "${prom_url}" "${query}" "${insecure}")"
       jq . <<<"${raw}"
       ;;
     *)

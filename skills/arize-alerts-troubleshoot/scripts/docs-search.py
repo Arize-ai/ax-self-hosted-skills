@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Search local Arize distribution docs for alert-related text.
 
-Resolves the distribution root the same way as catalog-lookup.py.
+Resolves the distribution root via scripts/distribution.py (same rules as
+catalog-lookup.py).
 
 Usage:
     docs-search.py --query druidloader
@@ -15,64 +16,15 @@ from __future__ import annotations
 import argparse
 import html
 import json
-import os
 import pathlib
 import re
 import sys
 
-_CATALOG_REL = pathlib.Path("docs/troubleshooting/selfhosted-alerts-table.csv")
-_MARKER_ARIZE_SH = "arize.sh"
+from distribution import resolve_distribution_root
+
 _DOC_GLOBS = ("**/*.html", "**/*.md", "**/*.csv", "**/*.txt")
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
-
-
-def _is_distribution_root(path: pathlib.Path) -> bool:
-    return (path / _CATALOG_REL).is_file() and (path / _MARKER_ARIZE_SH).is_file()
-
-
-def resolve_distribution_root(
-    explicit: pathlib.Path | None = None,
-    skill_dir: pathlib.Path | None = None,
-) -> pathlib.Path:
-    """Resolve unpacked arize-distribution root.
-
-    Order: explicit flag → ARIZE_DISTRIBUTION_ROOT → ARIZE_DIST.
-    Never walk the filesystem — operators often keep multiple releases.
-    """
-    del skill_dir  # kept for call-site compatibility; discovery by walk is forbidden
-
-    if explicit is not None:
-        root = explicit.expanduser().resolve()
-        if not _is_distribution_root(root):
-            # Allow a bare docs/ parent if CSV exists under troubleshooting/
-            docs_csv = root / "troubleshooting" / "selfhosted-alerts-table.csv"
-            if root.name == "docs" and docs_csv.is_file():
-                return root.parent
-            raise SystemExit(
-                f"Not a valid Arize distribution root (missing "
-                f"{_CATALOG_REL} and/or {_MARKER_ARIZE_SH}): {root}"
-            )
-        return root
-
-    for env_name in ("ARIZE_DISTRIBUTION_ROOT", "ARIZE_DIST"):
-        raw = os.environ.get(env_name, "").strip()
-        if not raw:
-            continue
-        root = pathlib.Path(raw).expanduser().resolve()
-        if not _is_distribution_root(root):
-            raise SystemExit(
-                f"{env_name}={root} is not a valid Arize distribution root"
-            )
-        return root
-
-    raise SystemExit(
-        "Distribution root not set.\n"
-        "Pass --distribution-root / --docs-root or export "
-        "ARIZE_DISTRIBUTION_ROOT to the unpacked arize-distribution directory "
-        "that matches this cluster (the folder that contains arize.sh and "
-        "docs/). Do not guess among multiple release directories."
-    )
 
 
 def _strip_html(text: str) -> str:
@@ -165,7 +117,7 @@ def main() -> int:
         "--docs-root",
         dest="distribution_root",
         type=pathlib.Path,
-        help="Unpacked arize-distribution directory (or its docs/ parent)",
+        help="Unpacked arize-distribution directory (or its docs/ folder)",
     )
     parser.add_argument("--query", help="Substring to search for (case-insensitive)")
     parser.add_argument(

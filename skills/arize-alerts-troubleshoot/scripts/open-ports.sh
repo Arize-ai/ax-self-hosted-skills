@@ -75,6 +75,28 @@ stop_forwards() {
   fi
 }
 
+# Drop dead PIDs; keep live ones so a re-run that adds another forward
+# does not orphan earlier tunnels from --stop.
+prune_pid_file() {
+  local tmp alive=0
+  tmp="$(mktemp "${TMP_DIR}/port-forwards.XXXXXX")"
+  if [[ -f "${PID_FILE}" ]]; then
+    while read -r pid; do
+      [[ -z "${pid}" ]] && continue
+      if kill -0 "${pid}" 2>/dev/null; then
+        echo "${pid}" >> "${tmp}"
+        alive=$((alive + 1))
+      fi
+    done < "${PID_FILE}"
+  fi
+  if [[ ${alive} -gt 0 ]]; then
+    mv "${tmp}" "${PID_FILE}"
+  else
+    rm -f "${tmp}" "${PID_FILE}"
+    : > "${PID_FILE}"
+  fi
+}
+
 status_forwards() {
   local port
   for port in 9090 9093 8080; do
@@ -258,7 +280,7 @@ main() {
     do_am=1
   fi
 
-  : > "${PID_FILE}"
+  prune_pid_file
 
   if [[ -n "${do_prom}" ]]; then
     if start_pf "prometheus" 9090 svc/prometheus 9090:9090; then

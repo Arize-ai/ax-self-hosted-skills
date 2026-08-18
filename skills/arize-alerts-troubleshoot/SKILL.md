@@ -50,7 +50,9 @@ long bash pipelines.
 ## Prerequisites
 
 1. Unpacked Arize distribution that matches the cluster release (contains
-   `arize.sh`, `docs/`)
+   `arize.sh`, `docs/`). Prefer exporting `ARIZE_DISTRIBUTION_ROOT` to that
+   unpack root. Script flags `--distribution-root` / `--docs-root` may also
+   point at the bare `docs/` folder (see `references/distribution.md`)
 2. Set **`ARIZE_DISTRIBUTION_ROOT`** to that directory (or pass
    `--distribution-root`) — never guess among multiple release folders
 3. `kubectl` context pointed at the cluster; `curl`, `jq`, `python3`
