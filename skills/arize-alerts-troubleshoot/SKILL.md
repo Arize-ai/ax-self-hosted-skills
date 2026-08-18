@@ -96,8 +96,11 @@ See `references/distribution.md`. Interpret the result by exit code:
 | 3 | Cluster unreadable (kubectl error, missing ConfigMap, empty field) | Fix cluster access first — see `references/access.md`. Do not report a version mismatch or a cluster fault |
 
 A failed `kubectl` read says nothing about cluster health. Never turn one into a
-finding. Do not assume `$ARIZE_DISTRIBUTION_ROOT/values.yaml` is the active
-install file.
+finding.
+
+If `$ARIZE_DISTRIBUTION_ROOT/values.yaml` exists, use it as the install values
+for this cluster. If that exact file is missing, ask which values file to use
+— do not guess among alternate paths or names.
 ### 2. Open ports (API-first)
 
 ```bash
@@ -157,7 +160,7 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --max-hits 20
 ```
 
-Primary local assets (relative to `$ARIZE_DISTRIBUTION_ROOT`):
+Primary local assets for alert RCA (relative to `$ARIZE_DISTRIBUTION_ROOT`):
 
 | Asset | Path |
 |---|---|
@@ -168,6 +171,16 @@ Primary local assets (relative to `$ARIZE_DISTRIBUTION_ROOT`):
 | Architecture | `docs/architecture/core-components.html` |
 | Operations / components | `docs/operations/operational-guide.html` |
 | Grafana guide | `docs/operations/grafana-guide.html` |
+| Values YAML parameters | `docs/reference/values-yaml-parameters.html` |
+| Install values | `values.yaml` (at distribution root; ask if missing) |
+
+Full docs inventory (architecture, install/platform, guides, advanced, ops,
+reference, troubleshooting): `references/distribution.md`. Live list for this
+unpack:
+
+```bash
+python3 "$SKILL_ROOT/scripts/docs-search.py" --list-docs
+```
 
 ### 5. Public docs (when local is thin)
 

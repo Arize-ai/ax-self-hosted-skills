@@ -23,9 +23,13 @@ Search tips:
 
 - Start with `alertname`, then `component`, then a symptom keyword from the
   catalog Description.
-- Prefer hits under `docs/troubleshooting/` and `docs/operations/`.
+- Prefer hits under `docs/troubleshooting/` and `docs/operations/` for alert RCA.
+- Also search `docs/architecture/`, `docs/installation/`, `docs/advanced/`,
+  `docs/reference/`, and `docs/guides/` when the symptom is install, Helm,
+  values, ingress, Postgres, or SDK related.
 - Open the HTML file and quote the relevant section; do not dump entire files
   into context.
+- For the full path inventory, see `distribution.md` or `--list-docs`.
 
 ## Public docs
 

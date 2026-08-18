@@ -7,11 +7,22 @@ Skill + unpacked distribution:
 ```text
 $ARIZE_DISTRIBUTION_ROOT/          # required knowledge root
   arize.sh
-  docs/troubleshooting/selfhosted-alerts-table.csv
-  docs/troubleshooting/troubleshooting-guide.html
-  docs/architecture/core-components.html
-  docs/operations/operational-guide.html
-  ...
+  arize-operator-chart.tgz
+  values.yaml                      # default install values (ask if missing)
+  docs/
+    index.html
+    architecture/                  # core-components, platform-options, resiliency
+    getting-started/               # overview, prerequisites, deployment types, FAQ, …
+    installation/                  # platform install/ingress/validate/SAML/Postgres, …
+    guides/                        # integrations, SDK, blob offload, …
+    on-premise-sdk-usage/          # Python SDK v7 / v8
+    operations/                    # operational-guide, grafana-guide
+    advanced/                      # helm, fresh-reinstall-cleanup
+    reference/                     # values-yaml-parameters
+    troubleshooting/               # alerts CSV/catalog, troubleshooting-guide, gazette, FAQ
+    sizing_*.csv                   # when present
+  examples/
+  terraform/
 
 $SKILL_ROOT/                       # this skill (directory containing SKILL.md)
   SKILL.md
@@ -24,6 +35,16 @@ $SKILL_ROOT/                       # this skill (directory containing SKILL.md)
   scripts/docs-search.py
 ```
 
+Full doc path table: `distribution.md`. Live inventory for this unpack:
+
+```bash
+python3 "$SKILL_ROOT/scripts/docs-search.py" --list-docs
+```
+
+When diagnosing, search the whole `docs/` tree (not only troubleshooting/).
+Install/config questions often need `values.yaml` plus
+`docs/reference/values-yaml-parameters.html` and platform install guides under
+`docs/installation/`.
 ## Diagnose loop
 
 ```bash

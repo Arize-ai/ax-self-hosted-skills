@@ -4,9 +4,9 @@ This skill treats the **unpacked Arize distribution** as the source of truth
 for product docs and the alerts catalog.
 
 **Never guess the distribution path.** Operators often keep multiple release
-directories and `values.yaml` files (different environments, upgrades in
-progress, old tarballs). Walking the filesystem or picking the nearest folder
-can attach the wrong docs/catalog to the wrong cluster.
+directories (different environments, upgrades in progress, old tarballs).
+Walking the filesystem or picking the nearest folder can attach the wrong
+docs/catalog to the wrong cluster.
 
 ## Distribution layout
 
@@ -26,7 +26,7 @@ arize-distribution/          # ← set ARIZE_DISTRIBUTION_ROOT here (explicitly)
       ...
   examples/
   terraform/
-  values.yaml                # may exist; do not assume it is the active install
+  values.yaml                # install values for this distribution root
 ```
 
 The CSV and HTML under `docs/` are **version-matched** to that distribution
@@ -58,26 +58,34 @@ test -f "$ARIZE_DISTRIBUTION_ROOT/docs/troubleshooting/selfhosted-alerts-table.c
 python3 "$SKILL_ROOT/scripts/catalog-lookup.py" --print-distribution-root
 ```
 
-### Values files
+### Values file
 
-Do not assume `$ARIZE_DISTRIBUTION_ROOT/values.yaml` is the file used by the
-cluster. If investigation needs install settings, ask which `values.yaml` (or
-equivalent) applies to this environment.
+Treat **`$ARIZE_DISTRIBUTION_ROOT/values.yaml`** as the install values for this
+cluster when that exact path exists.
+
+```bash
+test -f "$ARIZE_DISTRIBUTION_ROOT/values.yaml" && echo "values.yaml: ok"
+```
+
+If `values.yaml` is **not** present at the distribution root (missing, renamed,
+or only available under another path), **ask** which values file to use before
+relying on install settings (namespaces, ingress, sizing, feature flags, etc.).
+Do not search the filesystem for alternate names or pick a nearby file.
 
 ## Version check (required before using docs)
 
 Docs and the alerts catalog must match the **release running in the cluster**.
 
-`arize.sh` `VERSION` is a **git hash** (e.g. `d7c9c5a42`), not the numeric
+`arize.sh` `VERSION` is a **git hash** (e.g. `f3a8e21c7`), not the numeric
 release. The numeric version (e.g. `11.43.0`) is in the operator Helm chart
 shipped with the distribution.
 
 | Source | Field | Example |
 |---|---|---|
 | Distribution (semver) | `arize-operator-chart.tgz` → `Chart.yaml` `appVersion` (fallback: `version`) | `11.43.0` |
-| Distribution (hash) | `arize.sh` → `VERSION=` | `d7c9c5a42` |
+| Distribution (hash) | `arize.sh` → `VERSION=` | `f3a8e21c7` |
 | Cluster (semver) | ConfigMap `onprem-metadata` → `last-applied-release` in the **operator** namespace (often `arize-operator`) | `11.43.0` |
-| Cluster (hash) | same ConfigMap → `release-hash` | `d7c9c5a42` |
+| Cluster (hash) | same ConfigMap → `release-hash` | `f3a8e21c7` |
 
 **Match on semver** (`appVersion` / `version` vs `last-applied-release`). The
 hashes are useful cross-checks when present.
@@ -118,18 +126,75 @@ is not available in most shipped distributions.
 
 ## What to read from the distribution
 
-| Need | Open |
+Use `docs-search.py --list-docs` for the live inventory of this unpack (releases
+can add pages). Typical shipped tree under `$ARIZE_DISTRIBUTION_ROOT/docs/`:
+
+### Architecture
+| Doc | Path |
 |---|---|
-| What Arize is / core pieces | `docs/architecture/core-components.html` |
-| Deployment options | `docs/architecture/platform-options.html` |
-| Full component list + roles | `docs/operations/operational-guide.html` |
-| Alert meanings + first fixes | `docs/troubleshooting/selfhosted-alerts-table.csv` |
-| Deeper remediation | `docs/troubleshooting/troubleshooting-guide.html` |
-| Gazette-specific | `docs/troubleshooting/gazette-troubleshooting.html` |
-| Dashboards | `docs/operations/grafana-guide.html` |
+| Core components | `docs/architecture/core-components.html` |
+| Platform options | `docs/architecture/platform-options.html` |
+| Disaster recovery / HA | `docs/architecture/resiliency.html` |
+
+### Getting started
+| Doc | Path |
+|---|---|
+| Overview | `docs/getting-started/overview.html` |
+| Prerequisites | `docs/getting-started/prerequisites.html` |
+| Deployment types | `docs/getting-started/deployment-types.html` |
+| Download and unpack | `docs/getting-started/download-and-unpack-the-distribution.html` |
+| Getting started FAQ | `docs/getting-started/faq.html` |
+
+### Installation / platform
+| Doc | Path |
+|---|---|
+| Installation index | `docs/installation/index.html` |
+| Validate deployment | `docs/installation/validate-deployment.html` |
+| Configuring SAML | `docs/installation/configuring-saml.html` |
+| External Postgres | `docs/installation/external-postgres-requirements.html` |
+| Configuring endpoints | `docs/installation/ingress/configuring-endpoints.html` |
+| Other ingress controllers | `docs/installation/ingress/other-controllers.html` |
+| Bare metal compatibility | `docs/installation/bare-metal-compatibility.html` |
+| Single host | `docs/installation/installation-on-single-host.html` |
+| GCP / Azure / AWS / IBM / OpenShift / Rancher guides | `docs/installation/<platform>/…` (quickstart, walkthrough, cluster, ingress) |
+
+### Guides
+| Doc | Path |
+|---|---|
+| Integrations | `docs/guides/integrations.html` |
+| Multimodal blob offload | `docs/guides/multimodal-blob-offload.html` |
+| SDK usage | `docs/guides/sdk-usage.html` |
+| Python SDK v8 | `docs/on-premise-sdk-usage/version-8.html` |
+| Python SDK v7 | `docs/on-premise-sdk-usage/version-7.html` |
+
+### Operations / advanced / reference
+| Doc | Path |
+|---|---|
+| Operational guide (component roles) | `docs/operations/operational-guide.html` |
+| Grafana guide | `docs/operations/grafana-guide.html` |
+| Helm | `docs/advanced/helm.html` |
+| Fresh reinstall cleanup | `docs/advanced/fresh-reinstall-cleanup.html` |
+| Values YAML parameters | `docs/reference/values-yaml-parameters.html` |
+
+### Troubleshooting (start here for alerts)
+| Doc | Path |
+|---|---|
+| Alerts catalog (CSV) | `docs/troubleshooting/selfhosted-alerts-table.csv` |
+| Alerts catalog intro | `docs/troubleshooting/selfhosted-alerts-catalog.html` |
+| Troubleshooting guide | `docs/troubleshooting/troubleshooting-guide.html` |
+| Gazette troubleshooting | `docs/troubleshooting/gazette-troubleshooting.html` |
+| Troubleshooting FAQ | `docs/troubleshooting/faq.html` |
+
+### Other useful assets
+| Asset | Path |
+|---|---|
+| Docs home | `docs/index.html` |
+| Sizing CSVs (when present) | `docs/sizing_nonha.csv`, `docs/sizing_small1b.csv`, `docs/sizing_medium2b.csv` |
 
 Prefer the **CSV** for alert joins (`catalog-lookup.py`), then
-`docs-search.py` / open matching HTML when Resolution needs more depth.
+`docs-search.py` / open matching HTML when Resolution needs more depth. For
+install settings, read `$ARIZE_DISTRIBUTION_ROOT/values.yaml` (see above) and
+`docs/reference/values-yaml-parameters.html` for field meanings.
 
 ## Scratch output
 
