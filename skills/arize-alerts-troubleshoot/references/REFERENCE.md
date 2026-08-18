@@ -27,6 +27,8 @@ $ARIZE_DISTRIBUTION_ROOT/          # required knowledge root
 $SKILL_ROOT/                       # this skill (directory containing SKILL.md)
   SKILL.md
   references/
+  scripts/lib.sh                   # shared shell helpers (err, curl_flags, …)
+  scripts/distribution.py          # shared distribution-root resolution
   scripts/open-ports.sh
   scripts/check-version.sh
   scripts/prom-alerts.sh
@@ -34,7 +36,6 @@ $SKILL_ROOT/                       # this skill (directory containing SKILL.md)
   scripts/catalog-lookup.py
   scripts/docs-search.py
 ```
-
 Full doc path table: `distribution.md`. Live inventory for this unpack:
 
 ```bash
@@ -119,6 +120,8 @@ API-style access is preferred.
 
 | Script | Purpose |
 |---|---|
+| `lib.sh` | Shared shell helpers (`err`, `die`, `curl_flags`, …) sourced by the HTTP scripts |
+| `distribution.py` | Shared distribution-root resolution used by the Python scripts |
 | `open-ports.sh` | Background port-forwards for Prometheus / Alertmanager |
 | `check-version.sh` | Compare chart `appVersion` to `onprem-metadata` `last-applied-release` |
 | `prom-alerts.sh` | List firing alerts from Prometheus |

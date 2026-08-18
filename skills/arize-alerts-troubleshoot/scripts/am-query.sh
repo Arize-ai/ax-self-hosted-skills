@@ -13,18 +13,9 @@
 
 set -euo pipefail
 
-err() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
-}
-
-die() {
-  err "$@"
-  exit 1
-}
-
-require_nonempty() {
-  [[ -n "${1:-}" ]] || die "${2}: must not be empty"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -47,42 +38,6 @@ Examples:
   # HTTPS to real ingress verifies TLS by default; use --insecure only if needed.
 EOF
   exit 1
-}
-
-# -k (insecure TLS) only for localhost tunnels, or when explicitly opted in.
-# Real ingress URLs must verify certificates unless --insecure / CURL_INSECURE=1.
-curl_flags() {
-  local url="$1"
-  local insecure="${2:-0}"
-  if [[ "${url}" != https://* ]]; then
-    echo "-s"
-    return
-  fi
-  if [[ "${insecure}" == "1" || "${CURL_INSECURE:-}" == "1" ]]; then
-    echo "-sk"
-    return
-  fi
-  local host="${url#https://}"
-  host="${host%%/*}"
-  if [[ "${host}" == \[* ]]; then
-    host="${host#\[}"
-    host="${host%%\]*}"
-  else
-    host="${host%%:*}"
-  fi
-  case "${host}" in
-    localhost|127.0.0.1|::1)
-      echo "-sk"
-      ;;
-    *)
-      echo "-s"
-      ;;
-  esac
-}
-
-normalize_url() {
-  local url="$1"
-  echo "${url%/}"
 }
 
 # On-prem Alertmanager is often served under /alertmanager.
