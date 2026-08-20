@@ -4,11 +4,10 @@
 Resolves the distribution root via scripts/distribution.py (same rules as
 catalog-lookup.py).
 
-Each hit reports the nearest verified heading anchor and three ready-made
-citation forms. A chat client that opens local files treats the whole markdown
-link target as a path, so appending `#anchor` to a link target breaks it: use
-`abs_path` as the clickable target and deliver the anchor via `file_url` /
-`open_command`, which reach the section in a browser.
+Each hit reports the nearest verified heading anchor plus `markdown`: a
+paste-ready link, `[Page — Section](file://…#anchor)`, that stays clickable and
+keeps the fragment. Paste that verbatim rather than composing a link — a
+scheme-less path drops the anchor, and a bare URL in text is not clickable.
 
 Usage:
     docs-search.py --query druidloader
@@ -45,6 +44,7 @@ _MD_ANCHOR_RE = re.compile(
     r"^(#{1,6})\s+(.*?)\s*\{#([^}]+)\}\s*$", re.MULTILINE
 )
 _MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 # Anchors mkdocs/material renders inside heading text; drop from titles.
 _PERMALINK_RE = re.compile(r"¶|&para;|\ue157")
 
@@ -63,7 +63,27 @@ def _slugify(text: str) -> str:
 def _heading_title(raw_inner: str) -> str:
     title = _strip_html(raw_inner)
     title = _PERMALINK_RE.sub("", title)
-    return title.strip()
+    # Headings sometimes end in ":"; it reads badly inside a link label
+    return title.strip().rstrip(":").strip()
+
+
+def _doc_title(raw: str, suffix: str, path: pathlib.Path) -> str:
+    """Human-readable page title, for labeling a citation link."""
+    if suffix in _HTML_SUFFIXES:
+        m = _HEADING_RE.search(raw)
+        if m and m.group(1) == "1":
+            title = _heading_title(m.group(3))
+            if title:
+                return title
+        m = _TITLE_RE.search(raw)
+        if m:
+            # mkdocs renders "<page> - <site name>"; keep the page part
+            return _strip_html(m.group(1)).split(" - ")[0].strip()
+    elif suffix == ".md":
+        m = _MD_HEADING_RE.search(raw)
+        if m:
+            return m.group(2).strip()
+    return path.stem.replace("-", " ").replace("_", " ").title()
 
 
 def _collect_sections(raw: str, suffix: str) -> list[tuple[int, str, str]]:
@@ -190,18 +210,32 @@ def _open_command(file_url: str) -> str:
     return f'{opener} "{file_url}"'
 
 
-def _citation(path: pathlib.Path, anchor: str | None, section: str | None) -> dict:
+def _md_escape(text: str) -> str:
+    return text.replace("[", "\\[").replace("]", "\\]")
+
+
+def _citation(
+    path: pathlib.Path,
+    anchor: str | None,
+    section: str | None,
+    doc_title: str,
+) -> dict:
     """Every form needed to cite one doc section, so none must be composed.
 
-    `abs_path` carries no fragment: it is the only safe markdown link target
-    for a local file. The anchor travels separately in `file_url`.
+    `markdown` is the form to paste: an ordinary link whose target is a
+    `file://` URL, which stays clickable *and* keeps the fragment. A
+    scheme-less path is what breaks anchors, since clients that open local
+    files treat the whole target as a filename.
     """
     file_url = _file_url(path, anchor)
+    label = f"{doc_title} — {section}" if section else doc_title
     return {
         "section": section,
         "anchor": anchor,
+        "doc_title": doc_title,
         "abs_path": str(path.resolve()),
         "file_url": file_url,
+        "markdown": f"[{_md_escape(label)}]({file_url})",
         "open_command": _open_command(file_url),
     }
 
@@ -272,7 +306,7 @@ def search_docs(
                 "path": rel_s,
                 # Relative reference, for prose that names the file
                 "link": f"{rel_s}#{anchor}" if anchor else rel_s,
-                **_citation(path, anchor, section),
+                **_citation(path, anchor, section, _doc_title(raw, suffix, path)),
                 "excerpt": _excerpt(plain, query)
                 or _excerpt(str(path), query)
                 or plain[:200],
@@ -292,15 +326,17 @@ def list_sections(path: pathlib.Path, docs_root: pathlib.Path) -> dict:
         rel_s = str(path.relative_to(docs_root.parent))
     except ValueError:
         rel_s = str(path)
-    sections = _collect_sections(raw, path.suffix.lower())
+    suffix = path.suffix.lower()
+    sections = _collect_sections(raw, suffix)
+    doc_title = _doc_title(raw, suffix, path)
     return {
         "path": rel_s,
+        "doc_title": doc_title,
         "section_count": len(sections),
         "sections": [
             {
-                "title": t,
                 "link": f"{rel_s}#{a}",
-                **_citation(path, a, t),
+                **_citation(path, a, t, doc_title),
             }
             for _, a, t in sections
         ],

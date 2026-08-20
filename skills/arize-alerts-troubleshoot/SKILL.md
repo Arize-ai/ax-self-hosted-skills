@@ -198,11 +198,11 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --list-sections docs/troubleshooting/gazette-troubleshooting.html
 ```
 
-Each hit includes `section` (heading text), `anchor` (the page's real `id`),
-`abs_path`, `file_url` (`file://…#anchor`), and `open_command`. A local-file
-link target **cannot carry the anchor** — the client resolves the whole target
-as a path, so `…html#anchor` fails to open. Link `abs_path` and put `file_url`
-in backticks beside it. See [citation rules](references/docs.md).
+Each hit includes `anchor` (the page's real `id`), `section`, `file_url`, and
+`markdown` — a paste-ready `[Page — Section](file://…#anchor)` link. **Paste
+`markdown` verbatim.** It is the only form that is both clickable and anchored:
+a scheme-less path loses the anchor, and a URL in backticks or plain text is not
+clickable. See [citation rules](references/docs.md).
 
 For each relevant hit, open and review the **complete section**, not only the
 matching excerpt. Extract all remediation steps, verification checks,
@@ -246,17 +246,17 @@ Start at the index, then fetch linked pages relevant to the alert/component:
 Prefer **local distribution docs** (version-matched to the install) over the
 public site. Use public docs for install/ops concepts missing offline.
 
-Cite the **specific relevant section**. Public pages are real URLs, so the
-fragment goes in the link target:
+Cite the **specific relevant section** as a markdown link with the fragment in
+the target — `https://` for public pages, `file://` for local distribution
+files:
 
 ```markdown
 [Self-hosting — Upgrade](https://arize.com/docs/ax/selfhosting/upgrade#prerequisites)
 ```
 
-Local distribution files are the exception: the anchor must sit beside the link,
-not inside it (see [documentation strategy](references/docs.md)). Anchors always
-come from `docs-search.py` — never invent or re-slug one. If none is verified,
-link the page and name the exact heading.
+Anchors always come from `docs-search.py` — never invent or re-slug one. If none
+is verified, link the page and name the exact heading. Full rules:
+[documentation strategy](references/docs.md).
 
 ### 6. Summarize (read-only RCA)
 
@@ -268,8 +268,7 @@ For each high-severity alert (`page`, `page-biz-hours`, then `warning`):
    verification, fallback, and escalation gates
 4. What the user has already tried and the earliest applicable next step; ask
    before skipping an unconfirmed earlier step
-5. Local doc hits: page link plus section heading and its `file_url` in
-   backticks
+5. Local doc hits, each as its paste-ready `markdown` citation link
 6. Section-anchored public doc links only if they add something the local tree
    lacks
 7. Suggested **next diagnostic** (which pod to `safe-kubectl.sh … logs` /

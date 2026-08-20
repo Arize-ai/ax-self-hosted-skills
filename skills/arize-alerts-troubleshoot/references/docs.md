@@ -22,11 +22,10 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --list-sections docs/troubleshooting/gazette-troubleshooting.html
 ```
 
-Each hit carries `section` (heading text), `anchor` (the verified `id` from the
-page), `abs_path` (the page, no fragment), `file_url` (`file://…#anchor`),
-`open_command`, and `link` (relative, for naming a file in prose). See
-[how to cite them](#cite-the-exact-section) — the anchor cannot go inside a
-local-file link target.
+Each hit carries `markdown` (**the paste-ready citation link**), plus the parts
+it is built from: `doc_title`, `section`, `anchor` (the verified `id`),
+`file_url`, `abs_path`, `open_command`, and `link` (relative, for naming a file
+in prose). See [how to cite them](#cite-the-exact-section).
 
 Search tips:
 
@@ -64,57 +63,49 @@ When **not** to:
 
 ## Cite the exact section
 
-Local distribution docs are files on disk, and a chat client that opens local
-files resolves the **entire markdown link target as a filesystem path**. It does
-not parse a fragment. So `…/gazette-troubleshooting.html#fix-restart-consumer`
-as a link target is read as a request for a file whose name ends in
-`#fix-restart-consumer`, which does not exist, and the link silently fails to
-open. Dropping the fragment makes it open but lands at the top of the page.
-
-Local files therefore cannot carry a section anchor inside a markdown link.
-**The link target opens the page; the anchor is delivered beside it.** Use both
-fields from `docs-search.py` — `abs_path` as the link target, and `file_url` in
-backticks so the client renders it literally instead of rewriting it:
+A citation has to satisfy two things at once: it must be **clickable**, and it
+must **carry the anchor**. Exactly one form does both — a normal markdown link
+whose target is a `file://` URL. Paste `markdown` from `docs-search.py`
+verbatim:
 
 ```markdown
-- **Fix: Restart Consumer** — [open page](/Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html),
-  jump to section: `file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-restart-consumer`
+- [Gazette Troubleshooting Guide — Fix: Reset Journal Heads](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-reset-journal-heads)
+- [Values.yaml Parameters — Operator Parameters](file:///Users/me/onprem/release-11.43.0/docs/reference/values-yaml-parameters.html#operator-parameters)
 ```
 
-Always name the section heading in the text, so the anchor is not the only way
-to find the right part of the page. When several sections come from one page,
-list the page once and the sections under it. To open a section directly, offer
-the `open_command` value in a bash block:
-
-```bash
-open "file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-restart-consumer"
-```
+The `file://` scheme is what keeps the fragment intact. A scheme-less path is
+treated as a filename, so the client looks for a file literally ending in
+`#fix-reset-journal-heads`, finds nothing, and the link dies; drop the fragment
+to fix that and every section on a page collapses to the same link.
 
 Never do any of the following:
 
-- `[Fix: Restart Consumer](/Users/…/gazette-troubleshooting.html#fix-restart-consumer)`
-  — anchor inside a local link target. Will not open at all.
-- `[Fix: Restart Consumer](/Users/…/gazette-troubleshooting.html)` — opens, but
-  silently drops the section, so three different sections become the same link.
-  The anchor must appear beside it.
-- `[…](docs/troubleshooting/gazette-troubleshooting.html)` — the relative `link`
-  field. Use it to name a file in prose, never as a link target.
+- `` `file:///…#anchor` `` in backticks, or bare in text — correct target, but
+  code spans and plain text are not clickable.
+- `[label](/Users/…/gazette-troubleshooting.html#anchor)` — no scheme, so the
+  anchor becomes part of the filename and nothing opens.
+- `[label](/Users/…/gazette-troubleshooting.html)` — opens at the top of the
+  page and silently loses the section.
+- `[label](docs/troubleshooting/gazette-troubleshooting.html…)` — the relative
+  `link` field. Use it to name a file in prose, never as a link target.
 - `…/gazette-troubleshooting.html:4610` — a line number is not an anchor.
 - `…#fix-restart-consumers` — anchors are copied, never pluralized,
   singularized, or retyped from heading text.
 
 Rules:
 
-- Take `abs_path`, `file_url`, and `open_command` from `docs-search.py` or
-  `--list-sections`. Both read the `id` out of the shipped page, so the section
-  is known to exist. Never invent, guess, or re-slug an anchor.
+- Paste `markdown` from `docs-search.py` or `--list-sections`. Both read the
+  `id` out of the shipped page, so the section is known to exist. Never invent,
+  guess, or re-slug an anchor.
+- Name the section heading in the link label — `markdown` already does, as
+  `Page — Section` — so the right part of the page is identifiable even if the
+  link is copied as text.
 - If a hit has `anchor: null`, no anchor was verified: link the page and name
   the exact heading in the text.
-- **Public docs are different** — they are real URLs, so the fragment goes
-  directly in the link target: `[label](https://…/page#section-id)`, verified
-  against that page's headings.
-- Label every citation with the page title plus the section heading, so the
-  destination is clear before clicking.
+- Public docs work the same way, already being real URLs:
+  `[label](https://…/page#section-id)`, fragment verified against that page.
+- Offer `open_command` in a bash block **only** as a fallback, when a client
+  refuses to follow `file://` links. It is a command to run, not a citation.
 
 ## Preserve the documented remediation order
 
@@ -149,8 +140,8 @@ For each alert, structure the answer as:
 1. **Catalog** — Description, Severity, Self-Healing vs Intervention, Resolution
 2. **Full ordered procedure** — every relevant documented step, its gate, and
    which step is next based on what the user has already tried
-3. **Local docs** — page link (`abs_path`) plus the section heading and its
-   `file_url` in backticks, and a 2–4 sentence excerpt
+3. **Local docs** — the `markdown` citation link per section, each with a 2–4
+   sentence excerpt
 4. **Public docs** (optional) — anchored `https://…#section` link + why it adds
    value
 5. **Next diagnostic** — single read-only `safe-kubectl.sh` / PromQL step (do

@@ -203,18 +203,20 @@ Per-hit fields:
 | Field | Meaning |
 |---|---|
 | `path` | Doc path relative to the distribution root |
+| `doc_title` | Page title, from `<h1>`/`<title>` |
 | `section` | Heading text of the matched section (`null` if none verified) |
 | `anchor` | Heading `id` read from the page (`null` if none verified) |
+| `markdown` | **Paste-ready citation:** `[Page — Section](file://…#anchor)` |
+| `file_url` | `file://…#anchor` — the link target inside `markdown` |
+| `abs_path` | Absolute page path, no fragment |
+| `open_command` | `open`/`xdg-open` fallback for clients that block `file://` |
 | `link` | Relative `path#anchor` — for naming a file in prose |
-| `abs_path` | Absolute page path, no fragment — **the markdown link target** |
-| `file_url` | `file://…#anchor` — quote in backticks beside the link |
-| `open_command` | `open`/`xdg-open` invocation that jumps to the section |
 | `excerpt` | Surrounding text for the match |
 
-A client that opens local files resolves the whole link target as a path, so an
-anchored target (`…html#anchor`) does not open at all, while a bare page target
-opens at the top. Link `abs_path` and deliver the anchor as `file_url` in
-backticks. Public docs are ordinary URLs and take the fragment inline.
+Paste `markdown`. It is the only form that is both clickable and anchored: the
+`file://` scheme keeps the fragment (a scheme-less path is treated as a
+filename, so the anchor kills the link), and a link — not a code span or bare
+text — is what makes it clickable. Public docs take the fragment inline too.
 
 Anchors are read from the shipped page, so a non-null `anchor` is guaranteed to
 exist. Matches inside a page's nav/table of contents are ignored, and the chosen
