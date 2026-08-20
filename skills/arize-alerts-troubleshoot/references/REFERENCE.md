@@ -206,11 +206,15 @@ Per-hit fields:
 | `section` | Heading text of the matched section (`null` if none verified) |
 | `anchor` | Heading `id` read from the page (`null` if none verified) |
 | `link` | Relative `path#anchor` — for naming a file in prose |
-| `file_url` | Clickable `file://…#anchor` — **the form to cite in answers** |
+| `abs_path` | Absolute page path, no fragment — **the markdown link target** |
+| `file_url` | `file://…#anchor` — quote in backticks beside the link |
+| `open_command` | `open`/`xdg-open` invocation that jumps to the section |
 | `excerpt` | Surrounding text for the match |
 
-Cite `file_url`. A bare absolute path has no URL scheme and will not open, and
-only the `file://` form opens in a browser, which is what honors the fragment.
+A client that opens local files resolves the whole link target as a path, so an
+anchored target (`…html#anchor`) does not open at all, while a bare page target
+opens at the top. Link `abs_path` and deliver the anchor as `file_url` in
+backticks. Public docs are ordinary URLs and take the fragment inline.
 
 Anchors are read from the shipped page, so a non-null `anchor` is guaranteed to
 exist. Matches inside a page's nav/table of contents are ignored, and the chosen

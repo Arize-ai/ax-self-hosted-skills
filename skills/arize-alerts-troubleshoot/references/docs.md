@@ -22,9 +22,11 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --list-sections docs/troubleshooting/gazette-troubleshooting.html
 ```
 
-Each hit carries `section` (the heading text), `anchor` (the verified `id` from
-the page), `link` (relative `path#anchor`, for naming a file in prose), and
-`file_url` — the clickable `file://…#anchor` URI. **Cite `file_url` verbatim.**
+Each hit carries `section` (heading text), `anchor` (the verified `id` from the
+page), `abs_path` (the page, no fragment), `file_url` (`file://…#anchor`),
+`open_command`, and `link` (relative, for naming a file in prose). See
+[how to cite them](#cite-the-exact-section) — the anchor cannot go inside a
+local-file link target.
 
 Search tips:
 
@@ -60,47 +62,58 @@ When **not** to:
 - Catalog already has a clear Resolution
 - Local troubleshooting guide covers the same ground
 
-## Link to the exact section
+## Cite the exact section
 
-A documentation citation must be a link that **actually opens**. Two things are
-required: a URL scheme, and the anchor inside the link target.
+Local distribution docs are files on disk, and a chat client that opens local
+files resolves the **entire markdown link target as a filesystem path**. It does
+not parse a fragment. So `…/gazette-troubleshooting.html#fix-restart-consumer`
+as a link target is read as a request for a file whose name ends in
+`#fix-restart-consumer`, which does not exist, and the link silently fails to
+open. Dropping the fragment makes it open but lands at the top of the page.
 
-Local distribution docs are files on disk, so they need a `file://` URI. A bare
-absolute path like `/Users/…/gazette-troubleshooting.html#etcd-alert` has no
-scheme, so nothing can resolve it and clicking does nothing. The `file://` form
-also opens the page in a browser, which is what makes the fragment jump to the
-section — the same file opened in an editor ignores anchors entirely.
-
-Copy `file_url` from `docs-search.py` exactly as returned:
+Local files therefore cannot carry a section anchor inside a markdown link.
+**The link target opens the page; the anchor is delivered beside it.** Use both
+fields from `docs-search.py` — `abs_path` as the link target, and `file_url` in
+backticks so the client renders it literally instead of rewriting it:
 
 ```markdown
-[Gazette troubleshooting — Fix: Restart Consumer](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-restart-consumer)
-[Values.yaml Parameters — Required Parameters](file:///Users/me/onprem/release-11.43.0/docs/reference/values-yaml-parameters.html#required-parameters)
+- **Fix: Restart Consumer** — [open page](/Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html),
+  jump to section: `file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-restart-consumer`
 ```
 
-Never do any of the following, all of which produce a link that does not open:
+Always name the section heading in the text, so the anchor is not the only way
+to find the right part of the page. When several sections come from one page,
+list the page once and the sections under it. To open a section directly, offer
+the `open_command` value in a bash block:
 
-- `/Users/…/gazette-troubleshooting.html#etcd-alert` — absolute path with no
-  `file://` scheme. Correct anchor, dead link.
-- `docs/troubleshooting/gazette-troubleshooting.html#etcd-alert` — the relative
-  `link` field. Use it to name a file in prose, not as a link target.
-- `…/gazette-troubleshooting.html:4610` — a line number is not an anchor, and
-  `:<line>` breaks the target.
-- `…/gazette-troubleshooting.html), fragment #etcd-alert` — the fragment belongs
-  in the URL, not narrated next to it.
-- `…/gazette-troubleshooting.html#fix-restart-consumers` — anchors are copied,
-  never pluralized, singularized, or retyped from heading text.
+```bash
+open "file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-restart-consumer"
+```
+
+Never do any of the following:
+
+- `[Fix: Restart Consumer](/Users/…/gazette-troubleshooting.html#fix-restart-consumer)`
+  — anchor inside a local link target. Will not open at all.
+- `[Fix: Restart Consumer](/Users/…/gazette-troubleshooting.html)` — opens, but
+  silently drops the section, so three different sections become the same link.
+  The anchor must appear beside it.
+- `[…](docs/troubleshooting/gazette-troubleshooting.html)` — the relative `link`
+  field. Use it to name a file in prose, never as a link target.
+- `…/gazette-troubleshooting.html:4610` — a line number is not an anchor.
+- `…#fix-restart-consumers` — anchors are copied, never pluralized,
+  singularized, or retyped from heading text.
 
 Rules:
 
-- Take the whole target from `file_url`, or build it from `--list-sections`.
-  Both read the `id` out of the shipped page, so the section is known to exist.
-- Never invent, guess, or re-slug an anchor from heading text.
-- If a hit has `anchor: null`, no anchor was verified: link the page `file_url`
-  and name the exact heading in the text beside it.
-- Public docs need a scheme too, and follow the same shape:
-  `https://…/page#section-id`, fragment verified against that page's headings.
-- Label every link with the page title plus the section heading, so the
+- Take `abs_path`, `file_url`, and `open_command` from `docs-search.py` or
+  `--list-sections`. Both read the `id` out of the shipped page, so the section
+  is known to exist. Never invent, guess, or re-slug an anchor.
+- If a hit has `anchor: null`, no anchor was verified: link the page and name
+  the exact heading in the text.
+- **Public docs are different** — they are real URLs, so the fragment goes
+  directly in the link target: `[label](https://…/page#section-id)`, verified
+  against that page's headings.
+- Label every citation with the page title plus the section heading, so the
   destination is clear before clicking.
 
 ## Preserve the documented remediation order
@@ -136,9 +149,9 @@ For each alert, structure the answer as:
 1. **Catalog** — Description, Severity, Self-Healing vs Intervention, Resolution
 2. **Full ordered procedure** — every relevant documented step, its gate, and
    which step is next based on what the user has already tried
-3. **Local docs** — a clickable `file://…#anchor` link labeled with page and
-   section heading, plus a 2–4 sentence excerpt
-4. **Public docs** (optional) — anchored `https://` section URL + why it adds
+3. **Local docs** — page link (`abs_path`) plus the section heading and its
+   `file_url` in backticks, and a 2–4 sentence excerpt
+4. **Public docs** (optional) — anchored `https://…#section` link + why it adds
    value
 5. **Next diagnostic** — single read-only `safe-kubectl.sh` / PromQL step (do
    not run a log firehose unless asked)

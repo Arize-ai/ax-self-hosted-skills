@@ -4,9 +4,11 @@
 Resolves the distribution root via scripts/distribution.py (same rules as
 catalog-lookup.py).
 
-Each hit reports the nearest verified heading anchor plus `file_url`, a
-clickable `file://…#anchor` URI. Cite `file_url`: a bare filesystem path has no
-scheme and will not open.
+Each hit reports the nearest verified heading anchor and three ready-made
+citation forms. A chat client that opens local files treats the whole markdown
+link target as a path, so appending `#anchor` to a link target breaks it: use
+`abs_path` as the clickable target and deliver the anchor via `file_url` /
+`open_command`, which reach the section in a browser.
 
 Usage:
     docs-search.py --query druidloader
@@ -172,14 +174,36 @@ def _best_section(
 
 
 def _file_url(path: pathlib.Path, anchor: str | None) -> str:
-    """Clickable `file://` URI, percent-encoded, with the anchor appended.
+    """Percent-encoded `file://` URI with the anchor appended.
 
-    A bare filesystem path has no scheme, so nothing can open it; only a
-    `file://` URI opens the page in a browser, which is also what makes the
-    fragment jump to the section.
+    Only a browser honors the fragment, so this is the form to open in one —
+    not the form to use as a markdown link target in a chat client that
+    resolves local paths itself.
     """
     url = path.resolve().as_uri()
     return f"{url}#{anchor}" if anchor else url
+
+
+def _open_command(file_url: str) -> str:
+    """Shell command that opens the anchored URL in the default browser."""
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    return f'{opener} "{file_url}"'
+
+
+def _citation(path: pathlib.Path, anchor: str | None, section: str | None) -> dict:
+    """Every form needed to cite one doc section, so none must be composed.
+
+    `abs_path` carries no fragment: it is the only safe markdown link target
+    for a local file. The anchor travels separately in `file_url`.
+    """
+    file_url = _file_url(path, anchor)
+    return {
+        "section": section,
+        "anchor": anchor,
+        "abs_path": str(path.resolve()),
+        "file_url": file_url,
+        "open_command": _open_command(file_url),
+    }
 
 
 def _iter_doc_files(
@@ -246,12 +270,9 @@ def search_docs(
         hits.append(
             {
                 "path": rel_s,
-                "section": section,
-                "anchor": anchor,
                 # Relative reference, for prose that names the file
                 "link": f"{rel_s}#{anchor}" if anchor else rel_s,
-                # The only form that actually opens: cite this in answers
-                "file_url": _file_url(path, anchor),
+                **_citation(path, anchor, section),
                 "excerpt": _excerpt(plain, query)
                 or _excerpt(str(path), query)
                 or plain[:200],
@@ -277,10 +298,9 @@ def list_sections(path: pathlib.Path, docs_root: pathlib.Path) -> dict:
         "section_count": len(sections),
         "sections": [
             {
-                "anchor": a,
                 "title": t,
                 "link": f"{rel_s}#{a}",
-                "file_url": _file_url(path, a),
+                **_citation(path, a, t),
             }
             for _, a, t in sections
         ],
