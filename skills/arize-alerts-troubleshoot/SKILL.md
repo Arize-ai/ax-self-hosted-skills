@@ -5,6 +5,9 @@ description: >-
   kubectl/Prometheus/Alertmanager access and local distribution docs. Use when
   troubleshooting self-hosted alerts, finding related documentation for firing
   alerts, or investigating self-hosted cluster health.
+metadata:
+  author: arize
+  version: "1.0"
 ---
 
 # Self-Hosted Troubleshoot
@@ -26,12 +29,16 @@ Run **only** these classes of operations unless the user explicitly overrides:
 
 | Allowed | Examples |
 |---|---|
-| kubectl read | `get`, `describe`, `logs`, `top`, `api-resources`, `version` |
-| kubectl tunnel | `port-forward`, `proxy` (to open local HTTP endpoints) |
+| kubectl read | `safe-kubectl.sh -n <ns> get` / `describe` / `logs` / `top` |
+| kubectl tunnel | `safe-kubectl.sh -n <ns> port-forward`, `safe-kubectl.sh proxy` |
 | HTTP GET | Prometheus `/api/v1/*`, Alertmanager `/api/v2/*`, Kubernetes API via proxy |
 | Local docs | Read/search files under `$ARIZE_DISTRIBUTION_ROOT/docs/` |
 | Public docs | Fetch https://arize.com/docs/ax/selfhosting (and linked pages) |
 | Skill scripts | Everything under `$SKILL_ROOT/scripts/` |
+
+**All ad-hoc kubectl goes through** `$SKILL_ROOT/scripts/safe-kubectl.sh`
+(allowlisted verbs, namespace required except cluster-scoped). Do not invoke
+`kubectl` directly.
 
 **Forbidden:** `apply`, `create`, `delete`, `patch`, `edit`, `scale`, `exec`,
 `rollout restart`, `cordon`, `drain`, `taint`, mutating HTTP APIs, shelling
@@ -55,7 +62,8 @@ long bash pipelines.
    point at the bare `docs/` folder (see `references/distribution.md`)
 2. Set **`ARIZE_DISTRIBUTION_ROOT`** to that directory (or pass
    `--distribution-root`) — never guess among multiple release folders
-3. `kubectl` context pointed at the cluster; `curl`, `jq`, `python3`
+3. `kubectl` context pointed at the cluster; `curl`, `jq`, `python3`, `tar`.
+   Ad-hoc kubectl via `scripts/safe-kubectl.sh` only.
 4. Namespace where Prometheus / Alertmanager run (ask if unknown)
 5. Operator namespace for version check (often `arize-operator`; ask if unknown)
 
@@ -65,7 +73,7 @@ Copy this checklist and track progress:
 
 ```text
 Progress:
-- [ ] 1. Set distribution root explicitly + verify version vs cluster
+- [ ] 1. Preflight (tools, distribution, kube context confirmation, version match)
 - [ ] 2. Open read-only port-forwards (Prometheus, optional Alertmanager)
 - [ ] 3. List firing Prometheus alerts
 - [ ] 4. Join alerts to catalog + search local docs
@@ -73,36 +81,50 @@ Progress:
 - [ ] 6. Summarize findings (no remediating writes)
 ```
 
-### 1. Resolve the distribution (explicit + version check)
+### 1. Preflight (stop and ask if anything is missing)
 
-Ask for the unpacked distribution path if `$ARIZE_DISTRIBUTION_ROOT` is unset.
-Do **not** walk the filesystem to find one.
+Do **not** walk the filesystem for a distribution, and do **not** continue
+until this step exits 0 **and** the user has confirmed the kube context.
+Prompt the user with whatever `preflight.sh` prints after `ASK THE USER:`.
 
 ```bash
-export ARIZE_DISTRIBUTION_ROOT="/path/to/unpacked/arize-distribution"
 SKILL_ROOT="<path-to-this-skill>"   # directory containing SKILL.md
 OPERATOR_NS="${OPERATOR_NS:-arize-operator}"
 
-python3 "$SKILL_ROOT/scripts/catalog-lookup.py" --print-distribution-root
-"$SKILL_ROOT/scripts/check-version.sh" \
-  --distribution-root "$ARIZE_DISTRIBUTION_ROOT" \
+"$SKILL_ROOT/scripts/preflight.sh" \
+  ${ARIZE_DISTRIBUTION_ROOT:+--distribution-root "$ARIZE_DISTRIBUTION_ROOT"} \
   --operator-namespace "$OPERATOR_NS"
 ```
 
-See `references/distribution.md`. Interpret the result by exit code:
+`preflight.sh` prints `kube_context: <name>` (stdout and stderr). **Stop and
+ask** whether that is the intended self-hosted cluster. Do not open
+port-forwards, query Prometheus, or read cluster objects beyond preflight
+until they confirm (or give a different context / `KUBE_CONTEXT`).
 
-| Exit | Meaning | Next step |
+What it verifies (and what to ask when it fails):
+
+| Check | Failure | Ask the user for |
 |---|---|---|
-| 0 | Versions match | Proceed |
-| 1 | Real mismatch | Ask for the distribution matching `last-applied-release`; do not use these docs |
-| 3 | Cluster unreadable (kubectl error, missing ConfigMap, empty field) | Fix cluster access first — see `references/access.md`. Do not report a version mismatch or a cluster fault |
+| Tools (`kubectl`, `curl`, `jq`, `python3`, `tar`) | exit 1 | Install the missing tools |
+| Distribution path (`ARIZE_DISTRIBUTION_ROOT`) | exit 1 | Unpack root (folder with `arize.sh` + `docs/`). Never guess among releases |
+| Kube context | (always) | Confirm `kube_context` is the right cluster; switch and re-run if not |
+| ConfigMap `onprem-metadata` | exit 3 | Credentials/VPN, operator namespace (often `arize-operator`) |
+| Distribution semver vs `last-applied-release` | exit 4 | The unpack that matches the cluster version |
 
-A failed `kubectl` read says nothing about cluster health. Never turn one into a
-finding.
+A failed cluster read is **not** a cluster-health finding — see
+`references/access.md`. Version details: `references/distribution.md`.
 
-If `$ARIZE_DISTRIBUTION_ROOT/values.yaml` exists, use it as the install values
-for this cluster. If that exact file is missing, ask which values file to use
-— do not guess among alternate paths or names.
+Prefer `$ARIZE_DISTRIBUTION_ROOT/values.yaml` when that exact file exists. If
+it is missing, read ConfigMap `arizeapp` in the operator namespace:
+
+```bash
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "${OPERATOR_NS:-arize-operator}" \
+  get configmap arizeapp -o yaml
+```
+
+Do not search the filesystem for alternate values files. If both sources are
+unavailable, ask the user. Details: `references/distribution.md`.
+
 ### 2. Open ports (API-first)
 
 ```bash
@@ -112,11 +134,13 @@ export ARIZE_NAMESPACE="<namespace>"
 # Prints PROM / AM export hints; leaves port-forwards running in background
 ```
 
-Or manually (see `references/access.md`):
+Or manually via `safe-kubectl.sh` (see `references/access.md`):
 
 ```bash
-kubectl -n "$ARIZE_NAMESPACE" port-forward svc/prometheus 9090:9090 &
-kubectl -n "$ARIZE_NAMESPACE" port-forward svc/alertmanager 9093:9093 &
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$ARIZE_NAMESPACE" \
+  port-forward svc/prometheus 9090:9090 &
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$ARIZE_NAMESPACE" \
+  port-forward svc/alertmanager 9093:9093 &
 # APIs are under /prometheus and /alertmanager (bare host returns 302/404)
 export PROM="http://localhost:9090/prometheus"
 export AM="http://localhost:9093/alertmanager"
@@ -125,7 +149,7 @@ export AM="http://localhost:9093/alertmanager"
 Optional kube API proxy (for API-style access):
 
 ```bash
-kubectl proxy --port=8080 &
+"$SKILL_ROOT/scripts/safe-kubectl.sh" proxy --port=8080 &
 export KUBE_PROXY="http://localhost:8080"
 ```
 
@@ -162,6 +186,16 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --max-hits 20
 ```
 
+For each relevant hit, open and review the **complete section**, not only the
+matching excerpt. Extract all remediation steps, verification checks,
+prerequisites, and fallback/escalation conditions in their documented order.
+
+Do not skip ahead. If the docs say to restart stalled consumers, verify
+recovery, and perform de-sync recovery only if they remain stalled, recommend
+the restart first unless the user confirms it was already tried. Present
+de-sync recovery as the gated fallback, not the default recommendation. Never
+execute either mutation.
+
 Primary local assets for alert RCA (relative to `$ARIZE_DISTRIBUTION_ROOT`):
 
 | Asset | Path |
@@ -174,7 +208,7 @@ Primary local assets for alert RCA (relative to `$ARIZE_DISTRIBUTION_ROOT`):
 | Operations / components | `docs/operations/operational-guide.html` |
 | Grafana guide | `docs/operations/grafana-guide.html` |
 | Values YAML parameters | `docs/reference/values-yaml-parameters.html` |
-| Install values | `values.yaml` (at distribution root; ask if missing) |
+| Install values | `values.yaml` at distribution root; else ConfigMap `arizeapp` in the operator namespace |
 
 Full docs inventory (architecture, install/platform, guides, advanced, ops,
 reference, troubleshooting): `references/distribution.md`. Live list for this
@@ -194,18 +228,31 @@ Start at the index, then fetch linked pages relevant to the alert/component:
 Prefer **local distribution docs** (version-matched to the install) over the
 public site. Use public docs for install/ops concepts missing offline.
 
+When citing a public page, link to the **specific relevant section** with its
+verified heading fragment (`#section-id`) when available. Never invent an
+anchor. If no stable anchor exists, link the page and name the exact heading.
+For local HTML, give the relative path plus heading and include a verified
+fragment when present.
+
 ### 6. Summarize (read-only RCA)
 
 For each high-severity alert (`page`, `page-biz-hours`, then `warning`):
 
 1. Alertname, component, since when, severity
 2. Catalog Description + Resolution (verbatim when present)
-3. Local doc hits (paths + short excerpt)
-4. Public doc links only if they add something the local tree lacks
-5. Suggested **next diagnostic** (which pod to `logs`/`describe`) — do not
-   execute broad log pulls unless the user asks
+3. Full documented remediation procedure in order: first action,
+   verification, fallback, and escalation gates
+4. What the user has already tried and the earliest applicable next step; ask
+   before skipping an unconfirmed earlier step
+5. Local doc hits (path + exact heading + verified anchor when available)
+6. Section-specific public doc links only if they add something the local tree
+   lacks
+7. Suggested **next diagnostic** (which pod to `safe-kubectl.sh … logs` /
+   `describe`) — do not execute broad log pulls unless the user asks
 
-Investigation discipline: `references/investigation.md`.
+Investigation discipline: see
+[the investigation guide](references/investigation.md) and
+[documentation strategy](references/docs.md).
 
 ## Examples
 
@@ -214,6 +261,8 @@ export ARIZE_DISTRIBUTION_ROOT="/path/to/arize-distribution"
 export ARIZE_NAMESPACE="arize"
 SKILL_ROOT="/path/to/arize-alerts-troubleshoot"
 export PROM="http://localhost:9090/prometheus"
+
+"$SKILL_ROOT/scripts/preflight.sh" --distribution-root "$ARIZE_DISTRIBUTION_ROOT"
 
 # What is firing?
 "$SKILL_ROOT/scripts/prom-alerts.sh" --url "$PROM" --firing

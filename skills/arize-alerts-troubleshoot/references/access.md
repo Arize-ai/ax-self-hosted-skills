@@ -2,11 +2,15 @@
 
 Parameterized by **kube context + namespace + local HTTP URLs**.
 
+Ad-hoc cluster reads **must** go through `$SKILL_ROOT/scripts/safe-kubectl.sh`
+(allowlisted verbs, `-n` / `-A` required except cluster-scoped). Prefer
+`open-ports.sh` for Prometheus/Alertmanager tunnels.
+
 ## Discover services
 
 ```bash
-kubectl --context <context> -n <namespace> get svc prometheus alertmanager
-kubectl --context <context> -n <namespace> get pods -l 'app in (prometheus,alertmanager)'
+"$SKILL_ROOT/scripts/safe-kubectl.sh" --context <context> -n <namespace> get svc prometheus alertmanager
+"$SKILL_ROOT/scripts/safe-kubectl.sh" --context <context> -n <namespace> get pods -l 'app in (prometheus,alertmanager)'
 ```
 
 Typical Services in the **application** namespace:
@@ -40,7 +44,8 @@ curl -s -o /dev/null -w "%{http_code}\n" "$AM/api/v2/status"
 
 ## Preferred access order
 
-1. **Configured ingress / UI URLs** — if `values.yaml` exposes Prometheus or
+1. **Configured ingress / UI URLs** — if `values.yaml` (or ConfigMap
+   `arizeapp`) exposes Prometheus or
    Alertmanager (`alertsBaseUrl`, monitoring ingress, etc.), use those HTTPS
    bases directly (still include any `/prometheus` or `/alertmanager` path the
    ingress uses). `prom-alerts.sh` / `am-query.sh` verify TLS for non-localhost
@@ -49,8 +54,10 @@ curl -s -o /dev/null -w "%{http_code}\n" "$AM/api/v2/status"
 2. **Port-forward** (typical default):
 
    ```bash
-   kubectl --context <context> -n <namespace> port-forward svc/prometheus 9090:9090
-   kubectl --context <context> -n <namespace> port-forward svc/alertmanager 9093:9093
+   "$SKILL_ROOT/scripts/safe-kubectl.sh" --context <context> -n <namespace> \
+     port-forward svc/prometheus 9090:9090
+   "$SKILL_ROOT/scripts/safe-kubectl.sh" --context <context> -n <namespace> \
+     port-forward svc/alertmanager 9093:9093
    export PROM="http://localhost:9090/prometheus"
    export AM="http://localhost:9093/alertmanager"
    ```
@@ -61,7 +68,7 @@ curl -s -o /dev/null -w "%{http_code}\n" "$AM/api/v2/status"
 3. **kubectl proxy** (optional Kubernetes API HTTP access):
 
    ```bash
-   kubectl proxy --port=8080
+   "$SKILL_ROOT/scripts/safe-kubectl.sh" proxy --port=8080
    export KUBE_PROXY="http://localhost:8080"
    ```
 
@@ -92,7 +99,7 @@ Do **not** port-forward everything by default — start with Prometheus
 - If the namespace is unknown:
 
   ```bash
-  kubectl get pods -A | grep -E 'prometheus|alertmanager'
+  "$SKILL_ROOT/scripts/safe-kubectl.sh" -A get pods | grep -E 'prometheus|alertmanager'
   ```
 
 - Catalog Resolution steps that mention `kubectl -n arize-operator` refer to

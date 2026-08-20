@@ -44,10 +44,11 @@ Required on the machine where the agent runs the skill scripts:
 
 | Tool | Why |
 |---|---|
-| `kubectl` | Read-only cluster access (`get`, `describe`, `logs`, `port-forward`, …) |
+| `kubectl` | Read-only cluster access via `safe-kubectl.sh` (`get`, `describe`, `logs`, `port-forward`, …) |
 | `curl` | HTTP GETs against Prometheus / Alertmanager |
 | `jq` | JSON parsing in the shell helpers |
 | `python3` | `catalog-lookup.py`, `docs-search.py`, `distribution.py` |
+| `tar` | Read `Chart.yaml` from `arize-operator-chart.tgz` during version check |
 
 Also required for a useful investigation session:
 
@@ -64,6 +65,7 @@ Set these in the shell before (or while) running the skill:
 | `ARIZE_DISTRIBUTION_ROOT` | **Yes** (or pass `--distribution-root`) | Path to the unpacked distribution for this cluster. Alias: `ARIZE_DIST`. Must contain `arize.sh` and `docs/troubleshooting/selfhosted-alerts-table.csv`. |
 | `ARIZE_NAMESPACE` | Recommended | Application namespace where Prometheus / Alertmanager run (used by `open-ports.sh`) |
 | `OPERATOR_NS` | Optional | Operator namespace for version checks (default: `arize-operator`) |
+| `KUBE_CONTEXT` | Optional | kube context for `safe-kubectl.sh` / `preflight.sh` if not current-context |
 | `PROM` / `PROM_URL` | When querying Prometheus | Prometheus base URL, e.g. `http://localhost:9090/prometheus` |
 | `AM` / `AM_URL` | When querying Alertmanager | Alertmanager base URL, e.g. `http://localhost:9093/alertmanager` |
 | `ARIZE_SKILL_TMP` | Optional | Scratch dir for PID files / JSON dumps (default: `/tmp/arize-alerts-troubleshoot`) |

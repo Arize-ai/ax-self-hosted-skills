@@ -8,7 +8,7 @@ Skill + unpacked distribution:
 $ARIZE_DISTRIBUTION_ROOT/          # required knowledge root
   arize.sh
   arize-operator-chart.tgz
-  values.yaml                      # default install values (ask if missing)
+  values.yaml                      # install values when present; else cm/arizeapp
   docs/
     index.html
     architecture/                  # core-components, platform-options, resiliency
@@ -29,6 +29,8 @@ $SKILL_ROOT/                       # this skill (directory containing SKILL.md)
   references/
   scripts/lib.sh                   # shared shell helpers (err, curl_flags, …)
   scripts/distribution.py          # shared distribution-root resolution
+  scripts/safe-kubectl.sh          # read-only kubectl wrapper (required for ad-hoc kubectl)
+  scripts/preflight.sh             # tools + distribution + kube + version gate
   scripts/open-ports.sh
   scripts/check-version.sh
   scripts/prom-alerts.sh
@@ -43,7 +45,8 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" --list-docs
 ```
 
 When diagnosing, search the whole `docs/` tree (not only troubleshooting/).
-Install/config questions often need `values.yaml` plus
+Install/config questions often need `values.yaml` (or ConfigMap `arizeapp`
+in the operator namespace — see `distribution.md`) plus
 `docs/reference/values-yaml-parameters.html` and platform install guides under
 `docs/installation/`.
 ## Diagnose loop
@@ -56,7 +59,7 @@ SKILL_ROOT="/path/to/arize-alerts-troubleshoot"
 OUT="${ARIZE_SKILL_TMP:-/tmp/arize-alerts-troubleshoot}"
 mkdir -p "$OUT"
 
-"$SKILL_ROOT/scripts/check-version.sh" \
+"$SKILL_ROOT/scripts/preflight.sh" \
   --distribution-root "$ARIZE_DISTRIBUTION_ROOT" \
   --operator-namespace "$OPERATOR_NS"
 
@@ -108,13 +111,13 @@ GET /api/v2/status
 ## Kubernetes API via kubectl proxy (optional)
 
 ```bash
-kubectl proxy --port=8080
+"$SKILL_ROOT/scripts/safe-kubectl.sh" proxy --port=8080
 # Example read-only:
 curl -s http://localhost:8080/api/v1/namespaces/<ns>/pods | jq '.items[].metadata.name'
 ```
 
-Prefer `kubectl get/describe/logs` for routine checks; use the proxy when
-API-style access is preferred.
+Prefer `safe-kubectl.sh get/describe/logs` for routine checks; use the proxy
+when API-style access is preferred.
 
 ## Scripts
 
@@ -122,12 +125,31 @@ API-style access is preferred.
 |---|---|
 | `lib.sh` | Shared shell helpers (`err`, `die`, `curl_flags`, …) sourced by the HTTP scripts |
 | `distribution.py` | Shared distribution-root resolution used by the Python scripts |
+| `safe-kubectl.sh` | Read-only kubectl wrapper; required for all ad-hoc kubectl |
+| `preflight.sh` | Gate: tools, distribution root, kube context confirmation, `onprem-metadata`, version match |
 | `open-ports.sh` | Background port-forwards for Prometheus / Alertmanager |
 | `check-version.sh` | Compare chart `appVersion` to `onprem-metadata` `last-applied-release` |
 | `prom-alerts.sh` | List firing alerts from Prometheus |
 | `am-query.sh` | Query Alertmanager v2 API |
 | `catalog-lookup.py` | Join alertname/component → distribution CSV |
 | `docs-search.py` | Search local distribution docs for related text |
+
+### `safe-kubectl.sh`
+
+```bash
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$ARIZE_NAMESPACE" get pods
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$OPERATOR_NS" get configmap onprem-metadata
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$ARIZE_NAMESPACE" logs deploy/<name> --tail=200
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -A get ns
+```
+
+### `preflight.sh`
+
+```bash
+"$SKILL_ROOT/scripts/preflight.sh" \
+  --distribution-root "$ARIZE_DISTRIBUTION_ROOT" \
+  --operator-namespace "$OPERATOR_NS"
+```
 
 ### `prom-alerts.sh`
 

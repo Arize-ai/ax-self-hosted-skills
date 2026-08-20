@@ -56,7 +56,7 @@ Exact names depend on `values.yaml`. Common pattern:
 | Operator namespace (often `arize-operator`) | Arize Operator StatefulSet |
 | Application namespace (chosen at install; often `arize`) | receiver, gazette, druid*, app-server, prometheus, alertmanager, … |
 
-Always confirm with `kubectl get ns` / install notes for the cluster.
+Always confirm with `safe-kubectl.sh -A get ns` / install notes for the cluster.
 
 ## Alert severity (self-hosted)
 

@@ -15,20 +15,52 @@ Ask: “Does this help explain why *this* alert fired?” If no, drop it.
 
 ## Workflow
 
-1. Require an explicit `$ARIZE_DISTRIBUTION_ROOT` (`distribution.md`); run
-   `check-version.sh` against `onprem-metadata` and skim `architecture.md`.
+1. Run `preflight.sh` (`distribution.md`): tools, explicit
+   `$ARIZE_DISTRIBUTION_ROOT`, print kube context and **wait for the user to
+   confirm it**, readable `onprem-metadata`, version match. Skim
+   `architecture.md`. Prompt the user on any `ASK THE USER:` line.
 2. Open Prometheus (and optionally Alertmanager) via port-forward (`access.md`).
 3. Pull firing alerts (`prom-alerts.sh --firing`).
 4. Catalog join (`catalog-lookup.py`) using the CSV from the distribution.
 5. Search local docs (`docs-search.py`); open matching troubleshooting HTML.
+   Read the complete relevant section and extract its full ordered procedure,
+   including checks and conditions between steps.
 6. Classify:
    - `DeadMansSwitch` / heartbeat → expected firing; investigate only if
      *missing*.
    - Self-healing → note whether Kubernetes likely recovered; do not mutate.
-   - Intervention required → surface catalog **Resolution** as the first
-     human step (do not apply it yourself).
-7. Write RCA: alertname, since when, severity, doc evidence, next **read-only**
+   - Intervention required → present every relevant human remediation step in
+     documented order, and identify the earliest applicable step (do not apply
+     it yourself).
+7. Confirm what the operator has already tried. Do not recommend step N+1
+   unless step N was attempted, failed, or the docs explicitly say it does not
+   apply.
+8. Write RCA: alertname, since when, severity, doc evidence, full ordered
+   remediation procedure, section-specific links, and next **read-only**
    diagnostic.
+
+## Procedure completeness
+
+Treat remediation as an ordered decision path, not a bag of possible fixes.
+Review the entire relevant catalog Resolution and documentation section before
+answering.
+
+- Preserve prerequisites, intermediate verification, fallback, and escalation
+  order.
+- Lead with the least invasive documented step.
+- Include later steps for completeness, clearly gated by failure or
+  inapplicability of earlier steps.
+- Ask what has already been attempted when that determines the next step.
+- Never select a later, more invasive recovery merely because its paragraph
+  contains a closer keyword match.
+
+Example: for stalled consumers, if the docs say to restart consumers first,
+verify recovery, and use de-sync recovery only if still stalled, present that
+whole sequence and recommend the restart first unless it was already tried.
+
+When citing web docs, use a verified heading anchor (`#section-id`) when one is
+available. Otherwise link the page and state the exact heading. Never invent an
+anchor.
 
 ## Root-cause bar
 
@@ -41,8 +73,8 @@ Prefer this chain when evidence exists:
 2. State that made it possible (pod down, disk full, lag, missing dependency)
 3. Event that produced that state (deploy, OOMKill, PVC full, upstream stall)
 
-Start with (1) plus documentation. Deepen with targeted `kubectl describe/logs`
-when the user asks.
+Start with (1) plus documentation. Deepen with targeted
+`safe-kubectl.sh describe/logs` when the user asks.
 
 ## Context discipline
 

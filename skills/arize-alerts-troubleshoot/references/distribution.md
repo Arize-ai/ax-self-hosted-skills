@@ -50,7 +50,8 @@ contains `arize.sh` and `docs/`), then export it:
 export ARIZE_DISTRIBUTION_ROOT="/path/to/unpacked/arize-distribution"
 ```
 
-Verify the path is a distribution root:
+Verify the path is a distribution root (or run `preflight.sh`, which includes
+this plus tools, kube access, and version match):
 
 ```bash
 test -f "$ARIZE_DISTRIBUTION_ROOT/arize.sh"
@@ -68,19 +69,28 @@ the unpack's bare `docs/` directory when
 then resolve the parent as the distribution root. Prefer setting the env var
 to the real unpack root so version checks (`arize.sh`, operator chart) still
 work.
+
 ### Values file
 
-Treat **`$ARIZE_DISTRIBUTION_ROOT/values.yaml`** as the install values for this
-cluster when that exact path exists.
+Prefer **`$ARIZE_DISTRIBUTION_ROOT/values.yaml`** as the install values for
+this cluster when that exact path exists.
 
 ```bash
 test -f "$ARIZE_DISTRIBUTION_ROOT/values.yaml" && echo "values.yaml: ok"
 ```
 
-If `values.yaml` is **not** present at the distribution root (missing, renamed,
-or only available under another path), **ask** which values file to use before
-relying on install settings (namespaces, ingress, sizing, feature flags, etc.).
-Do not search the filesystem for alternate names or pick a nearby file.
+If that file is missing, the live install values are on ConfigMap `arizeapp`
+in the **operator** namespace (often `arize-operator`). Read it with
+`safe-kubectl.sh` — do not search the filesystem for alternate filenames.
+
+```bash
+OPERATOR_NS="${OPERATOR_NS:-arize-operator}"
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$OPERATOR_NS" get configmap arizeapp -o yaml
+```
+
+If both the file and the ConfigMap are unavailable, **ask** which values to
+use before relying on install settings (namespaces, ingress, sizing, feature
+flags, etc.).
 
 ## Version check (required before using docs)
 
@@ -107,8 +117,14 @@ tar -xOf "$ARIZE_DISTRIBUTION_ROOT/arize-operator-chart.tgz" --wildcards '*/Char
 
 # Cluster semver
 OPERATOR_NS="${OPERATOR_NS:-arize-operator}"
-kubectl -n "$OPERATOR_NS" get configmap onprem-metadata \
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$OPERATOR_NS" get configmap onprem-metadata \
   -o jsonpath='{.data.last-applied-release}{"\n"}'
+```
+
+```bash
+"$SKILL_ROOT/scripts/preflight.sh" \
+  --distribution-root "$ARIZE_DISTRIBUTION_ROOT" \
+  --operator-namespace "$OPERATOR_NS"
 ```
 
 Or:
@@ -203,7 +219,8 @@ can add pages). Typical shipped tree under `$ARIZE_DISTRIBUTION_ROOT/docs/`:
 
 Prefer the **CSV** for alert joins (`catalog-lookup.py`), then
 `docs-search.py` / open matching HTML when Resolution needs more depth. For
-install settings, read `$ARIZE_DISTRIBUTION_ROOT/values.yaml` (see above) and
+install settings, prefer `$ARIZE_DISTRIBUTION_ROOT/values.yaml`; if it is
+missing, read ConfigMap `arizeapp` in the operator namespace (see above) and
 `docs/reference/values-yaml-parameters.html` for field meanings.
 
 ## Scratch output
