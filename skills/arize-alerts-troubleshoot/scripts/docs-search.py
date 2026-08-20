@@ -4,11 +4,16 @@
 Resolves the distribution root via scripts/distribution.py (same rules as
 catalog-lookup.py).
 
+Each hit reports the nearest verified heading anchor plus `file_url`, a
+clickable `file://…#anchor` URI. Cite `file_url`: a bare filesystem path has no
+scheme and will not open.
+
 Usage:
     docs-search.py --query druidloader
     docs-search.py --query "single-shard-stall" --max-hits 15
     docs-search.py --query historical --path troubleshooting
     docs-search.py --list-docs
+    docs-search.py --list-sections docs/troubleshooting/gazette-troubleshooting.html
 """
 
 from __future__ import annotations
@@ -25,12 +30,156 @@ from distribution import resolve_distribution_root
 _DOC_GLOBS = ("**/*.html", "**/*.md", "**/*.csv", "**/*.txt")
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
+_HTML_SUFFIXES = {".html", ".htm"}
+
+# Heading anchors as authored in the shipped docs, e.g.
+# <h2 id="fix-restart-consumer">Fix: Restart Consumer</h2>
+_HEADING_RE = re.compile(
+    r"<h([1-6])[^>]*\bid=[\"']([^\"']+)[\"'][^>]*>(.*?)</h\1>",
+    re.IGNORECASE | re.DOTALL,
+)
+# Markdown headings with an explicit {#anchor}
+_MD_ANCHOR_RE = re.compile(
+    r"^(#{1,6})\s+(.*?)\s*\{#([^}]+)\}\s*$", re.MULTILINE
+)
+_MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+# Anchors mkdocs/material renders inside heading text; drop from titles.
+_PERMALINK_RE = re.compile(r"¶|&para;|\ue157")
 
 
 def _strip_html(text: str) -> str:
     text = _TAG_RE.sub(" ", text)
     text = html.unescape(text)
     return _WS_RE.sub(" ", text).strip()
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9\s-]", "", text.lower())
+    return re.sub(r"[\s-]+", "-", slug).strip("-")
+
+
+def _heading_title(raw_inner: str) -> str:
+    title = _strip_html(raw_inner)
+    title = _PERMALINK_RE.sub("", title)
+    return title.strip()
+
+
+def _collect_sections(raw: str, suffix: str) -> list[tuple[int, str, str]]:
+    """Return [(offset, anchor, title)] sorted by offset.
+
+    Only anchors that actually exist in the file are returned, so callers never
+    invent a fragment. Markdown headings without an explicit {#id} fall back to
+    the conventional GitHub-style slug.
+    """
+    sections: list[tuple[int, str, str]] = []
+
+    if suffix in _HTML_SUFFIXES:
+        for m in _HEADING_RE.finditer(raw):
+            title = _heading_title(m.group(3))
+            if title:
+                sections.append((m.start(), m.group(2), title))
+    elif suffix == ".md":
+        explicit: set[int] = set()
+        for m in _MD_ANCHOR_RE.finditer(raw):
+            explicit.add(m.start())
+            sections.append((m.start(), m.group(3), m.group(2).strip()))
+        for m in _MD_HEADING_RE.finditer(raw):
+            if m.start() in explicit:
+                continue
+            title = m.group(2).strip()
+            slug = _slugify(title)
+            if slug:
+                sections.append((m.start(), slug, title))
+
+    sections.sort(key=lambda s: s[0])
+    return sections
+
+
+def _section_for_offset(
+    sections: list[tuple[int, str, str]], offset: int
+) -> tuple[str, str] | None:
+    """Nearest heading at or before offset."""
+    found: tuple[str, str] | None = None
+    for start, anchor, title in sections:
+        if start <= offset:
+            found = (anchor, title)
+        else:
+            break
+    return found
+
+
+def _searchable(raw: str, suffix: str) -> str:
+    """Raw text with tags blanked so offsets still line up with the source."""
+    if suffix not in _HTML_SUFFIXES:
+        return raw
+    return _TAG_RE.sub(lambda m: " " * len(m.group(0)), raw)
+
+
+def _match_offsets(raw: str, suffix: str, query: str, limit: int = 200) -> list[int]:
+    haystack = _searchable(raw, suffix).lower()
+    needle = query.lower()
+    if not needle:
+        return []
+    offsets: list[int] = []
+    start = 0
+    while len(offsets) < limit:
+        idx = haystack.find(needle, start)
+        if idx < 0:
+            break
+        offsets.append(idx)
+        start = idx + len(needle)
+    return offsets
+
+
+def _best_section(
+    raw: str, suffix: str, query: str
+) -> tuple[str, str] | None:
+    """Pick the verified anchor whose section actually covers the query.
+
+    Occurrences inside a page's nav/table of contents sit before the first
+    heading and are ignored, so a hit never anchors to the wrong place. A
+    section whose own title matches wins; otherwise the section containing the
+    most occurrences wins.
+    """
+    sections = _collect_sections(raw, suffix)
+    if not sections:
+        return None
+
+    q = query.lower()
+    body_start = sections[0][0]
+    counts: dict[str, int] = {}
+    titles: dict[str, str] = {}
+
+    for offset in _match_offsets(raw, suffix, query):
+        if offset < body_start:
+            continue  # nav / TOC region
+        match = _section_for_offset(sections, offset)
+        if match is None:
+            continue
+        anchor, title = match
+        counts[anchor] = counts.get(anchor, 0) + 1
+        titles[anchor] = title
+
+    if not counts:
+        return None
+
+    for anchor, title in titles.items():
+        if q in title.lower():
+            return anchor, title
+
+    best = max(counts.items(), key=lambda kv: kv[1])[0]
+    return best, titles[best]
+
+
+def _file_url(path: pathlib.Path, anchor: str | None) -> str:
+    """Clickable `file://` URI, percent-encoded, with the anchor appended.
+
+    A bare filesystem path has no scheme, so nothing can open it; only a
+    `file://` URI opens the page in a browser, which is also what makes the
+    fragment jump to the section.
+    """
+    url = path.resolve().as_uri()
+    return f"{url}#{anchor}" if anchor else url
 
 
 def _iter_doc_files(
@@ -79,16 +228,30 @@ def search_docs(
             raw = path.read_bytes()[:max_bytes].decode("utf-8", errors="replace")
         except OSError:
             continue
-        plain = _strip_html(raw) if path.suffix.lower() in {".html", ".htm"} else raw
+        suffix = path.suffix.lower()
+        plain = _strip_html(raw) if suffix in _HTML_SUFFIXES else raw
         if q not in plain.lower() and q not in str(path).lower():
             continue
         try:
             rel_s = str(path.relative_to(docs_root.parent))
         except ValueError:
             rel_s = str(path)
+
+        anchor: str | None = None
+        section: str | None = None
+        best = _best_section(raw, suffix, query)
+        if best is not None:
+            anchor, section = best
+
         hits.append(
             {
                 "path": rel_s,
+                "section": section,
+                "anchor": anchor,
+                # Relative reference, for prose that names the file
+                "link": f"{rel_s}#{anchor}" if anchor else rel_s,
+                # The only form that actually opens: cite this in answers
+                "file_url": _file_url(path, anchor),
                 "excerpt": _excerpt(plain, query)
                 or _excerpt(str(path), query)
                 or plain[:200],
@@ -97,6 +260,31 @@ def search_docs(
         if len(hits) >= max_hits:
             break
     return hits
+
+
+def list_sections(path: pathlib.Path, docs_root: pathlib.Path) -> dict:
+    """Every verified anchor in one doc, for citing a section precisely."""
+    if not path.is_file():
+        raise SystemExit(f"Not a file: {path}")
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        rel_s = str(path.relative_to(docs_root.parent))
+    except ValueError:
+        rel_s = str(path)
+    sections = _collect_sections(raw, path.suffix.lower())
+    return {
+        "path": rel_s,
+        "section_count": len(sections),
+        "sections": [
+            {
+                "anchor": a,
+                "title": t,
+                "link": f"{rel_s}#{a}",
+                "file_url": _file_url(path, a),
+            }
+            for _, a, t in sections
+        ],
+    }
 
 
 def list_docs(docs_root: pathlib.Path, path_filter: str | None) -> list[str]:
@@ -137,6 +325,14 @@ def main() -> int:
         action="store_true",
         help="List doc files under the distribution and exit",
     )
+    parser.add_argument(
+        "--list-sections",
+        metavar="DOC",
+        help=(
+            "List verified heading anchors for one doc "
+            "(path relative to the distribution root, or absolute)"
+        ),
+    )
     args = parser.parse_args()
 
     root = resolve_distribution_root(args.distribution_root, skill_dir=skill_dir)
@@ -151,8 +347,17 @@ def main() -> int:
         }, indent=2))
         return 0
 
+    if args.list_sections:
+        target = pathlib.Path(args.list_sections)
+        if not target.is_absolute():
+            target = root / target
+        payload = list_sections(target.resolve(), docs_root)
+        payload["distribution_root"] = str(root)
+        print(json.dumps(payload, indent=2))
+        return 0 if payload["section_count"] else 2
+
     if not args.query:
-        parser.error("Provide --query or --list-docs")
+        parser.error("Provide --query, --list-docs, or --list-sections")
 
     hits = search_docs(
         docs_root,

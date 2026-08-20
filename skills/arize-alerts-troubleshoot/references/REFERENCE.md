@@ -126,7 +126,7 @@ when API-style access is preferred.
 | `lib.sh` | Shared shell helpers (`err`, `die`, `curl_flags`, …) sourced by the HTTP scripts |
 | `distribution.py` | Shared distribution-root resolution used by the Python scripts |
 | `safe-kubectl.sh` | Read-only kubectl wrapper; required for all ad-hoc kubectl |
-| `preflight.sh` | Gate: tools, distribution root, kube context confirmation, `onprem-metadata`, version match |
+| `preflight.sh` | Gate: tools, distribution root, kube context confirmation, API reachability, `onprem-metadata`, version match |
 | `open-ports.sh` | Background port-forwards for Prometheus / Alertmanager |
 | `check-version.sh` | Compare chart `appVersion` to `onprem-metadata` `last-applied-release` |
 | `prom-alerts.sh` | List firing alerts from Prometheus |
@@ -150,6 +150,18 @@ when API-style access is preferred.
   --distribution-root "$ARIZE_DISTRIBUTION_ROOT" \
   --operator-namespace "$OPERATOR_NS"
 ```
+
+| Exit | Meaning |
+|---|---|
+| 0 | All checks passed |
+| 1 | Missing tools or distribution root — ask the user |
+| 2 | Usage error |
+| 3 | API server reachable but `onprem-metadata` unreadable (namespace / RBAC) |
+| 4 | Distribution version does not match the cluster |
+| 5 | This shell has no network path to the API server (agent sandbox / firewall) |
+
+Exit 5 is a **tooling** failure: re-run with unrestricted network access before
+reporting VPN, credential, namespace, or cluster-health problems.
 
 ### `prom-alerts.sh`
 
@@ -182,7 +194,30 @@ Matching heuristics:
 python3 "$SKILL_ROOT/scripts/docs-search.py" --query "historical" --max-hits 20
 python3 "$SKILL_ROOT/scripts/docs-search.py" --query "ALERTS" --path troubleshooting
 python3 "$SKILL_ROOT/scripts/docs-search.py" --list-docs
+python3 "$SKILL_ROOT/scripts/docs-search.py" \
+  --list-sections docs/troubleshooting/gazette-troubleshooting.html
 ```
+
+Per-hit fields:
+
+| Field | Meaning |
+|---|---|
+| `path` | Doc path relative to the distribution root |
+| `section` | Heading text of the matched section (`null` if none verified) |
+| `anchor` | Heading `id` read from the page (`null` if none verified) |
+| `link` | Relative `path#anchor` — for naming a file in prose |
+| `file_url` | Clickable `file://…#anchor` — **the form to cite in answers** |
+| `excerpt` | Surrounding text for the match |
+
+Cite `file_url`. A bare absolute path has no URL scheme and will not open, and
+only the `file://` form opens in a browser, which is what honors the fragment.
+
+Anchors are read from the shipped page, so a non-null `anchor` is guaranteed to
+exist. Matches inside a page's nav/table of contents are ignored, and the chosen
+section is the one whose heading matches the query or that contains the most
+occurrences. `--list-sections` dumps every anchor in a page for precise citation.
+
+Exit codes: `0` hits found, `2` no hits (or no sections for `--list-sections`).
 
 ## Scratch output
 

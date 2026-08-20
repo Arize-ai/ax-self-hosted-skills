@@ -110,14 +110,23 @@ Do **not** port-forward everything by default — start with Prometheus
 Distinguish **cluster access problems** from **Arize problems** before drawing any
 conclusion. A failed read is not evidence about the cluster's health.
 
+**First rule:** if the same `kubectl` command works in the operator's own
+terminal but fails for the agent, the agent's shell is sandboxed or firewalled.
+That is a **tooling** problem. Re-run with unrestricted network access before
+mentioning VPN, cloud credentials, namespaces, or cluster health.
+`preflight.sh` exits **5** for this case and prints the API endpoint it tried.
+
 | Symptom | Meaning | Do this |
 |---|---|---|
-| `Unable to connect to the server: Forbidden` | The shell cannot reach the API server (network policy, proxy, sandboxed shell) | Fix the shell's network path; do not re-interpret as a namespace or install problem |
-| `Unable to connect to the server: dial tcp ... i/o timeout` | No route / VPN down | Restore connectivity |
+| `Unable to connect to the server: Forbidden` | The shell cannot reach the API server (sandboxed agent shell, network policy, proxy) | Re-run outside the sandbox / with full network access. Do not re-interpret as a namespace, credential, or install problem |
+| DNS timeout on the API hostname (e.g. `*.eks.amazonaws.com`) | The shell's resolver is blocked, common in agent sandboxes with domain allowlists | Re-run with unrestricted network access before blaming VPN or credentials |
+| `Unable to connect to the server: dial tcp ... i/o timeout` | No route / VPN down (or blocked shell) | Confirm the shell is unsandboxed, then restore connectivity |
 | `error: You must be logged in to the server` | Expired or missing credentials | Re-authenticate, confirm `kubectl config current-context` |
 | `configmaps "onprem-metadata" not found` | Wrong namespace, or install never reconciled | Confirm `--operator-namespace` |
 | `check-version.sh` exits **3** | Cluster state unreadable | Treat version as unknown; do not claim a version mismatch |
 | `check-version.sh` exits **1** | Real semver mismatch | Get the distribution matching `last-applied-release` |
+| `preflight.sh` exits **5** | This shell has no network path to the API server | Re-run with full network access (sandbox off); only then investigate VPN/credentials |
+| `preflight.sh` exits **3** | API server answered, but `onprem-metadata` was unreadable | Confirm operator namespace and ConfigMap read permission — not connectivity |
 
 `check-version.sh` prints kubectl's own error. Read it before changing the
 namespace: an access error and a missing ConfigMap need opposite fixes.

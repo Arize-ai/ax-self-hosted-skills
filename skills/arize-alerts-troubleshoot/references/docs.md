@@ -17,7 +17,14 @@ a given release — say so when you rely on them.
 ```bash
 python3 "$SKILL_ROOT/scripts/docs-search.py" --query "<alertname or component>"
 python3 "$SKILL_ROOT/scripts/docs-search.py" --list-docs
+# Every verified heading anchor in one page
+python3 "$SKILL_ROOT/scripts/docs-search.py" \
+  --list-sections docs/troubleshooting/gazette-troubleshooting.html
 ```
+
+Each hit carries `section` (the heading text), `anchor` (the verified `id` from
+the page), `link` (relative `path#anchor`, for naming a file in prose), and
+`file_url` — the clickable `file://…#anchor` URI. **Cite `file_url` verbatim.**
 
 Search tips:
 
@@ -55,18 +62,46 @@ When **not** to:
 
 ## Link to the exact section
 
-When giving the user a web documentation link, link to the most specific
-section available, not merely the page root:
+A documentation citation must be a link that **actually opens**. Two things are
+required: a URL scheme, and the anchor inside the link target.
 
-- Prefer the page's canonical heading URL with its fragment, such as
-  `https://example/page#recovery-steps`.
-- If the public page has a table of contents or heading anchors, verify the
-  fragment targets the section you actually used.
-- If no stable section anchor exists, link the page and name the exact heading
-  beside it (for example, “Recovery steps”).
-- For local distribution HTML, report the relative file path and exact heading.
-  If that HTML exposes a stable `id`, include it as `path.html#section-id`.
-- Never invent an anchor from heading text without verifying it exists.
+Local distribution docs are files on disk, so they need a `file://` URI. A bare
+absolute path like `/Users/…/gazette-troubleshooting.html#etcd-alert` has no
+scheme, so nothing can resolve it and clicking does nothing. The `file://` form
+also opens the page in a browser, which is what makes the fragment jump to the
+section — the same file opened in an editor ignores anchors entirely.
+
+Copy `file_url` from `docs-search.py` exactly as returned:
+
+```markdown
+[Gazette troubleshooting — Fix: Restart Consumer](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-restart-consumer)
+[Values.yaml Parameters — Required Parameters](file:///Users/me/onprem/release-11.43.0/docs/reference/values-yaml-parameters.html#required-parameters)
+```
+
+Never do any of the following, all of which produce a link that does not open:
+
+- `/Users/…/gazette-troubleshooting.html#etcd-alert` — absolute path with no
+  `file://` scheme. Correct anchor, dead link.
+- `docs/troubleshooting/gazette-troubleshooting.html#etcd-alert` — the relative
+  `link` field. Use it to name a file in prose, not as a link target.
+- `…/gazette-troubleshooting.html:4610` — a line number is not an anchor, and
+  `:<line>` breaks the target.
+- `…/gazette-troubleshooting.html), fragment #etcd-alert` — the fragment belongs
+  in the URL, not narrated next to it.
+- `…/gazette-troubleshooting.html#fix-restart-consumers` — anchors are copied,
+  never pluralized, singularized, or retyped from heading text.
+
+Rules:
+
+- Take the whole target from `file_url`, or build it from `--list-sections`.
+  Both read the `id` out of the shipped page, so the section is known to exist.
+- Never invent, guess, or re-slug an anchor from heading text.
+- If a hit has `anchor: null`, no anchor was verified: link the page `file_url`
+  and name the exact heading in the text beside it.
+- Public docs need a scheme too, and follow the same shape:
+  `https://…/page#section-id`, fragment verified against that page's headings.
+- Label every link with the page title plus the section heading, so the
+  destination is clear before clicking.
 
 ## Preserve the documented remediation order
 
@@ -101,8 +136,9 @@ For each alert, structure the answer as:
 1. **Catalog** — Description, Severity, Self-Healing vs Intervention, Resolution
 2. **Full ordered procedure** — every relevant documented step, its gate, and
    which step is next based on what the user has already tried
-3. **Local docs** — file path + exact section heading (and verified anchor,
-   when present) + 2–4 sentence excerpt
-4. **Public docs** (optional) — section-specific URL + why it adds value
+3. **Local docs** — a clickable `file://…#anchor` link labeled with page and
+   section heading, plus a 2–4 sentence excerpt
+4. **Public docs** (optional) — anchored `https://` section URL + why it adds
+   value
 5. **Next diagnostic** — single read-only `safe-kubectl.sh` / PromQL step (do
    not run a log firehose unless asked)

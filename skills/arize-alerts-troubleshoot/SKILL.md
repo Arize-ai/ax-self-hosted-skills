@@ -108,8 +108,16 @@ What it verifies (and what to ask when it fails):
 | Tools (`kubectl`, `curl`, `jq`, `python3`, `tar`) | exit 1 | Install the missing tools |
 | Distribution path (`ARIZE_DISTRIBUTION_ROOT`) | exit 1 | Unpack root (folder with `arize.sh` + `docs/`). Never guess among releases |
 | Kube context | (always) | Confirm `kube_context` is the right cluster; switch and re-run if not |
-| ConfigMap `onprem-metadata` | exit 3 | Credentials/VPN, operator namespace (often `arize-operator`) |
+| API server reachable from this shell | exit 5 | **Re-run with full network access first** — see below |
+| ConfigMap `onprem-metadata` | exit 3 | Operator namespace (often `arize-operator`) and ConfigMap read permission |
 | Distribution semver vs `last-applied-release` | exit 4 | The unpack that matches the cluster version |
+
+**Exit 5 — your own shell is blocked, not the cluster.** If `kubectl` fails
+with `Forbidden`, `no such host`, `i/o timeout`, or `dial tcp` while the
+operator's terminal works, the agent shell is sandboxed or firewalled. Re-run
+the skill's commands with unrestricted network access before saying anything
+about VPN, cloud credentials, or the operator namespace. Never report this as a
+cluster fault or a wrong namespace.
 
 A failed cluster read is **not** a cluster-health finding — see
 `references/access.md`. Version details: `references/distribution.md`.
@@ -184,7 +192,16 @@ Alertmanager is useful for routing/silence context:
 python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --query "<alertname or component>" \
   --max-hits 20
+
+# All verified heading anchors in one page
+python3 "$SKILL_ROOT/scripts/docs-search.py" \
+  --list-sections docs/troubleshooting/gazette-troubleshooting.html
 ```
+
+Each hit includes `section` (heading text), `anchor` (the page's real `id`), and
+`file_url` (`file://…#anchor`). **Cite `file_url` as-is** — a bare
+`/Users/…` path has no URL scheme and will not open, however correct the anchor
+is. See [link formatting rules](references/docs.md).
 
 For each relevant hit, open and review the **complete section**, not only the
 matching excerpt. Extract all remediation steps, verification checks,
@@ -228,11 +245,19 @@ Start at the index, then fetch linked pages relevant to the alert/component:
 Prefer **local distribution docs** (version-matched to the install) over the
 public site. Use public docs for install/ops concepts missing offline.
 
-When citing a public page, link to the **specific relevant section** with its
-verified heading fragment (`#section-id`) when available. Never invent an
-anchor. If no stable anchor exists, link the page and name the exact heading.
-For local HTML, give the relative path plus heading and include a verified
-fragment when present.
+Cite the **specific relevant section**, with a URL scheme and the fragment
+inside the link target. Local docs use `file://` (which also makes the browser
+honor the anchor); public docs use `https://`. No line numbers, and never state
+the fragment beside the link.
+
+```markdown
+[Gazette troubleshooting — Fix: De-sync Recovery](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-de-sync-recovery)
+```
+
+Take the target from `docs-search.py` (`file_url` / `--list-sections`), which
+reads anchors out of the page. Never invent or re-slug one. If no anchor is
+verified, link the page and name the exact heading beside it. Full rules:
+[documentation strategy](references/docs.md).
 
 ### 6. Summarize (read-only RCA)
 
@@ -244,8 +269,9 @@ For each high-severity alert (`page`, `page-biz-hours`, then `warning`):
    verification, fallback, and escalation gates
 4. What the user has already tried and the earliest applicable next step; ask
    before skipping an unconfirmed earlier step
-5. Local doc hits (path + exact heading + verified anchor when available)
-6. Section-specific public doc links only if they add something the local tree
+5. Local doc hits as clickable `file://…#anchor` links, labeled with page and
+   section heading
+6. Section-anchored public doc links only if they add something the local tree
    lacks
 7. Suggested **next diagnostic** (which pod to `safe-kubectl.sh … logs` /
    `describe`) — do not execute broad log pulls unless the user asks

@@ -13,12 +13,18 @@
 #   2  usage
 #   3  cluster unreadable (kubectl / onprem-metadata)
 #   4  distribution version does not match the cluster
+#   5  this shell has no network path to the API server (e.g. agent sandbox)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${SCRIPT_DIR}/lib.sh"
+
+# Failures meaning "this shell cannot reach the API server" rather than
+# "credentials or namespace are wrong". Sandboxed agent shells hit these even
+# when the operator's own terminal works fine.
+readonly NETWORK_PATH_ERR_RE='Forbidden|no such host|i/o timeout|Timeout|deadline exceeded|connection refused|network is unreachable|no route to host|proxyconnect|dial tcp'
 
 die_usage() {
   err "$@"
@@ -38,10 +44,12 @@ Checks (stop and prompt on the first failure):
   1. kubectl, curl, jq, python3, tar on PATH
   2. ARIZE_DISTRIBUTION_ROOT is a valid unpack (arize.sh + alerts CSV)
   3. Print the active kube context (agent must confirm it with the user)
-  4. kubectl can read configmap/onprem-metadata (cluster access)
-  5. distribution semver matches cluster last-applied-release
+  4. This shell can actually reach the Kubernetes API server
+  5. kubectl can read configmap/onprem-metadata (cluster access)
+  6. distribution semver matches cluster last-applied-release
 
-Exit codes: 0 ok, 1 ask user (local), 2 usage, 3 cluster unreadable, 4 version mismatch
+Exit codes: 0 ok, 1 ask user (local), 2 usage, 3 cluster unreadable,
+            4 version mismatch, 5 no network path from this shell (sandbox)
 EOF
   exit 2
 }
@@ -52,6 +60,42 @@ print_kube_context() {
   echo "kube_context: ${ctx_name}"
   err "kube_context: ${ctx_name}"
   ask "confirm kube context '${ctx_name}' is the self-hosted cluster you want to diagnose. Do not continue until they say yes. If it is wrong, they should switch context (or set KUBE_CONTEXT / --context) and re-run preflight."
+}
+
+# Probes the API server directly so a blocked shell is never reported as a
+# credential, namespace, or cluster-health problem.
+check_api_reachable() {
+  local err_file rc=0
+  err_file="$(mktemp)"
+  kubectl ${KUBECTL_ARGS[@]+"${KUBECTL_ARGS[@]}"} --request-timeout=15s \
+    get --raw /version >/dev/null 2>"${err_file}" || rc=$?
+  API_ERR="$(cat "${err_file}" 2>/dev/null || true)"
+  rm -f "${err_file}"
+  return "${rc}"
+}
+
+report_unreachable_api() {
+  local ctx_name="$1"
+  local api_host="$2"
+
+  err "kubectl could not reach the Kubernetes API server (${api_host:-unknown endpoint})."
+  if [[ -n "${API_ERR}" ]]; then
+    err "kubectl said:"
+    printf '%s\n' "${API_ERR}" | sed 's/^/    /' >&2
+  fi
+
+  if printf '%s' "${API_ERR}" | grep -qE "${NETWORK_PATH_ERR_RE}"; then
+    err "This is a NETWORK PATH failure from THIS shell — not credentials, not"
+    err "the namespace, and not cluster health. Do not report it as any of those."
+    err "If 'kubectl get ns' works in the operator's own terminal, this shell is"
+    err "sandboxed or firewalled. Re-run with unrestricted network access"
+    err "(disable the agent shell sandbox), then retry preflight."
+    ask "first re-run this from a shell with full network access. Only if it still fails there should they check VPN/credentials for context '${ctx_name}'."
+    exit 5
+  fi
+
+  ask "kube access for context '${ctx_name}': re-authenticate (credentials may be expired) and confirm the cluster endpoint is reachable."
+  exit 3
 }
 
 main() {
@@ -124,6 +168,21 @@ main() {
   fi
   print_kube_context "${ctx_name}"
 
+  KUBECTL_ARGS=()
+  if [[ -n "${context}" ]]; then
+    KUBECTL_ARGS=(--context "${context}")
+  fi
+
+  local api_host
+  api_host="$(kubectl ${KUBECTL_ARGS[@]+"${KUBECTL_ARGS[@]}"} config view --minify \
+    -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)"
+
+  API_ERR=""
+  if ! check_api_reachable; then
+    report_unreachable_api "${ctx_name}" "${api_host}"
+  fi
+  err "api_server: reachable (${api_host})"
+
   local cv_args=(--distribution-root "${root}" --operator-namespace "${operator_ns}")
   if [[ -n "${context}" ]]; then
     cv_args+=(--context "${context}")
@@ -144,7 +203,9 @@ main() {
       exit 2
       ;;
     3)
-      ask "kube access: confirm context '${ctx_name}', credentials, network/VPN, and operator namespace (currently '${operator_ns}' — often arize-operator). ConfigMap onprem-metadata must be readable."
+      # The API server already answered above, so this is a namespace/RBAC or
+      # not-yet-reconciled problem — not connectivity.
+      ask "the operator namespace: ConfigMap onprem-metadata was not readable in '${operator_ns}' even though the API server is reachable. Confirm the operator namespace (often arize-operator) and that your user can read ConfigMaps there."
       exit 3
       ;;
     *)

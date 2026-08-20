@@ -17,8 +17,11 @@ Ask: “Does this help explain why *this* alert fired?” If no, drop it.
 
 1. Run `preflight.sh` (`distribution.md`): tools, explicit
    `$ARIZE_DISTRIBUTION_ROOT`, print kube context and **wait for the user to
-   confirm it**, readable `onprem-metadata`, version match. Skim
-   `architecture.md`. Prompt the user on any `ASK THE USER:` line.
+   confirm it**, API server reachable, readable `onprem-metadata`, version
+   match. Skim `architecture.md`. Prompt the user on any `ASK THE USER:` line.
+   If it exits **5**, your shell has no network path to the API server: re-run
+   with unrestricted network access before reporting anything about VPN,
+   credentials, namespaces, or cluster health (`access.md`).
 2. Open Prometheus (and optionally Alertmanager) via port-forward (`access.md`).
 3. Pull firing alerts (`prom-alerts.sh --firing`).
 4. Catalog join (`catalog-lookup.py`) using the CSV from the distribution.
@@ -58,9 +61,11 @@ Example: for stalled consumers, if the docs say to restart consumers first,
 verify recovery, and use de-sync recovery only if still stalled, present that
 whole sequence and recommend the restart first unless it was already tried.
 
-When citing web docs, use a verified heading anchor (`#section-id`) when one is
-available. Otherwise link the page and state the exact heading. Never invent an
-anchor.
+Cite docs with a link that opens: a URL scheme plus the anchor inside the
+target. Copy `docs-search.py`'s `file_url` (`file://…#section-id`) for local
+docs; a bare `/Users/…` path has no scheme and will not open. No `:<line>`
+suffix, and no fragment narrated beside the link. If no anchor is verified, link
+the page and state the exact heading. See [documentation strategy](docs.md).
 
 ## Root-cause bar
 
