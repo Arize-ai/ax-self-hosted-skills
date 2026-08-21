@@ -83,7 +83,8 @@ was dropped and the link lands on the wrong part of the page.
 
 Reconstructing a URL from memory, or from a file path seen earlier in the
 investigation, is how paths get mistyped and anchors get dropped. Always re-run
-the command above instead, then verify the finished draft:
+the command above. Paste its stdout unchanged into the answer; do not build an
+inline link from the document path.
 
 ```bash
 python3 "$SKILL_ROOT/scripts/verify-doc-links.py" --file <draft>
@@ -96,8 +97,7 @@ When the matched section has no `id`, `markdown` links the whole document
 labeled with just the page title — the only case where a target has no `#`.
 
 - Anchors come from the shipped page, so never invent, guess, or re-slug one.
-- `file-url` is the default. Pass `--link-style path` (or set
-  `ARIZE_DOCS_LINK_STYLE=path`) only for a client that requires bare paths.
+- Local citations have one supported form: `file:///absolute/path#anchor`.
 - Public docs work identically: `[label](https://…/page#section-id)`.
 
 ## Preserve the documented remediation order

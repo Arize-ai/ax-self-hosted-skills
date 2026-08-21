@@ -37,9 +37,11 @@ For example:
 [Reset Journal Heads procedure](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-reset-journal-heads)
 ```
 
-Never type these links yourself — paths get mistyped and anchors get dropped.
-Copy each URL from `docs-search.py` (`markdown` field, or `--format markdown`).
-The label is yours to word; the URL is copied byte for byte.
+Never type, reconstruct, or reformat these links yourself — paths get mistyped
+and anchors get dropped. In the same turn as the answer, run `docs-search.py
+--format markdown` for every cited section and paste its stdout unchanged. Do
+not turn a path obtained elsewhere into a link. If you did not obtain a citation
+from that command, do not include the local documentation link.
 
 Before sending any answer containing documentation links, run:
 
@@ -306,7 +308,8 @@ For each high-severity alert (`page`, `page-biz-hours`, then `warning`):
    verification, fallback, and escalation gates
 4. What the user has already tried and the earliest applicable next step; ask
    before skipping an unconfirmed earlier step
-5. Local doc hits, each as its paste-ready `markdown` citation link
+5. Local doc hits copied unchanged from `docs-search.py --format markdown`.
+   Never independently construct an inline link from a known document path.
 6. Section-anchored public doc links only if they add something the local tree
    lacks
 7. Suggested **next diagnostic** (which pod to `safe-kubectl.sh … logs` /

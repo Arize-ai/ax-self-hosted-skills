@@ -210,17 +210,15 @@ Per-hit fields:
 
 | Field | Meaning |
 |---|---|
-| `path` | Doc path relative to the distribution root |
 | `doc_title` | Page title, from `<h1>`/`<title>` |
 | `section` | Heading text of the matched section (`null` if none verified) |
 | `anchor` | Heading `id` read from the page (`null` if none verified) |
-| `target` | Document with `#anchor` appended, or the plain document |
+| `target` | `file:///…` document URL with `#anchor` appended, or the plain document |
 | `markdown` | **Paste-ready citation:** `[Page — Section](target)`. Relabel freely; copy the URL exactly |
 | `excerpt` | Surrounding text for the match |
 
-`--link-style file-url` (default) makes `target` a `file://…` URL.
-`--link-style path` makes it an absolute filesystem path for IDE clients that
-require bare local paths. `ARIZE_DOCS_LINK_STYLE` sets the default.
+Bare-path citations are not supported. Local citation targets always use a
+`file:///absolute/path#anchor` URL.
 
 Anchors are read from the shipped page, so a non-null `anchor` is guaranteed to
 exist. Matches inside a page's nav/table of contents are ignored, and the chosen

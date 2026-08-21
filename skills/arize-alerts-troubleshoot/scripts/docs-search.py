@@ -5,9 +5,8 @@ Resolves the distribution root via scripts/distribution.py (same rules as
 catalog-lookup.py).
 
 Each hit reports the nearest verified heading anchor plus `markdown`: a
-paste-ready `[Page — Section](/abs/path.html#anchor)` link. Sections without an
-`id` fall back to a link to the whole document. Use --link-style file-url in a
-terminal client, which linkifies only text carrying a URL scheme.
+paste-ready `[Page — Section](file:///abs/path.html#anchor)` link. Sections
+without an `id` fall back to a link to the whole document.
 
 Usage:
     docs-search.py --query druidloader
@@ -27,7 +26,6 @@ from __future__ import annotations
 import argparse
 import html
 import json
-import os
 import pathlib
 import re
 import sys
@@ -208,18 +206,10 @@ def _citation(
     anchor: str | None,
     section: str | None,
     doc_title: str,
-    link_style: str = "path",
 ) -> dict:
-    """Paste-ready citation for one doc section.
-
-    `target` is the document with the verified anchor appended, and falls back
-    to the plain document when the section has no `id`. `link_style` picks the
-    form the client can open: `path` for clients that resolve local paths,
-    `file-url` by default for broadly clickable links; `path` is available for
-    IDE clients that specifically require a bare local path.
-    """
+    """Return one paste-ready `file:///…#anchor` citation."""
     resolved = path.resolve()
-    target = resolved.as_uri() if link_style == "file-url" else str(resolved)
+    target = resolved.as_uri()
     if anchor:
         target = f"{target}#{anchor}"
     label = f"{doc_title} — {section}" if section and anchor else doc_title
@@ -270,7 +260,6 @@ def search_docs(
     path_filter: str | None,
     max_hits: int,
     max_bytes: int,
-    link_style: str = "path",
 ) -> list[dict]:
     hits: list[dict] = []
     q = query.lower()
@@ -283,11 +272,6 @@ def search_docs(
         plain = _strip_html(raw) if suffix in _HTML_SUFFIXES else raw
         if q not in plain.lower() and q not in str(path).lower():
             continue
-        try:
-            rel_s = str(path.relative_to(docs_root.parent))
-        except ValueError:
-            rel_s = str(path)
-
         anchor: str | None = None
         section: str | None = None
         best = _best_section(raw, suffix, query)
@@ -296,13 +280,11 @@ def search_docs(
 
         hits.append(
             {
-                "path": rel_s,
                 **_citation(
                     path,
                     anchor,
                     section,
                     _doc_title(raw, suffix, path),
-                    link_style,
                 ),
                 "excerpt": _excerpt(plain, query)
                 or _excerpt(str(path), query)
@@ -314,26 +296,19 @@ def search_docs(
     return hits
 
 
-def list_sections(
-    path: pathlib.Path, docs_root: pathlib.Path, link_style: str = "path"
-) -> dict:
+def list_sections(path: pathlib.Path, docs_root: pathlib.Path) -> dict:
     """Every verified anchor in one doc, for citing a section precisely."""
     if not path.is_file():
         raise SystemExit(f"Not a file: {path}")
     raw = path.read_text(encoding="utf-8", errors="replace")
-    try:
-        rel_s = str(path.relative_to(docs_root.parent))
-    except ValueError:
-        rel_s = str(path)
     suffix = path.suffix.lower()
     sections = _collect_sections(raw, suffix)
     doc_title = _doc_title(raw, suffix, path)
     return {
-        "path": rel_s,
         "doc_title": doc_title,
         "section_count": len(sections),
         "sections": [
-            _citation(path, a, t, doc_title, link_style) for _, a, t in sections
+            _citation(path, a, t, doc_title) for _, a, t in sections
         ],
     }
 
@@ -375,16 +350,6 @@ def main() -> int:
         "--list-docs",
         action="store_true",
         help="List doc files under the distribution and exit",
-    )
-    parser.add_argument(
-        "--link-style",
-        choices=("path", "file-url"),
-        default=os.environ.get("ARIZE_DOCS_LINK_STYLE", "file-url"),
-        help=(
-            "Citation link form: 'file-url' (default) for clickable local "
-            "URLs; 'path' for IDE clients that require bare local paths. "
-            "Defaults to $ARIZE_DOCS_LINK_STYLE or 'file-url'."
-        ),
     )
     parser.add_argument(
         "--list-sections",
@@ -429,7 +394,7 @@ def main() -> int:
         target = pathlib.Path(args.list_sections)
         if not target.is_absolute():
             target = root / target
-        payload = list_sections(target.resolve(), docs_root, args.link_style)
+        payload = list_sections(target.resolve(), docs_root)
         if args.section:
             needle = args.section.lower()
             payload["sections"] = [
@@ -456,7 +421,6 @@ def main() -> int:
         path_filter=args.path_filter,
         max_hits=args.max_hits,
         max_bytes=args.max_bytes,
-        link_style=args.link_style,
     )
     if args.format == "markdown":
         for hit in hits:
