@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # check-version.sh -- Compare distribution release version to cluster onprem-metadata.
 #
 # Usage:
@@ -12,10 +12,12 @@
 
 set -euo pipefail
 
-err() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+SAFE_KUBECTL="${SCRIPT_DIR}/safe-kubectl.sh"
 
+# Override lib.sh's exit-1 helper to preserve this script's usage contract.
 die() {
   err "$@"
   exit 2
@@ -41,10 +43,6 @@ Exit codes:
   0 match, 1 mismatch, 2 usage, 3 cluster unreadable
 EOF
   exit 2
-}
-
-require_nonempty() {
-  [[ -n "${1:-}" ]] || die "${2}: must not be empty"
 }
 
 dist_git_hash_from_arize_sh() {
@@ -94,7 +92,7 @@ kubectl_cli() {
   if [[ -n "${CONTEXT}" ]]; then
     ctx_args=(--context "${CONTEXT}")
   fi
-  kubectl "${ctx_args[@]+"${ctx_args[@]}"}" "$@"
+  "${SAFE_KUBECTL}" "${ctx_args[@]+"${ctx_args[@]}"}" "$@"
 }
 
 # Fetches the ConfigMap once. On failure, KUBECTL_ERR holds kubectl's stderr so
@@ -157,6 +155,7 @@ main() {
 
   command -v kubectl >/dev/null 2>&1 || die "kubectl not found on PATH"
   command -v jq >/dev/null 2>&1 || die "jq not found on PATH"
+  [[ -x "${SAFE_KUBECTL}" ]] || die "safe-kubectl.sh is not executable: ${SAFE_KUBECTL}"
 
   local dist_semver dist_hash
   dist_semver="$(dist_semver_from_operator_chart "${root}")"

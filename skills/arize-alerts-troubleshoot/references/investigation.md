@@ -22,7 +22,9 @@ Ask: “Does this help explain why *this* alert fired?” If no, drop it.
    If it exits **5**, your shell has no network path to the API server: re-run
    with unrestricted network access before reporting anything about VPN,
    credentials, namespaces, or cluster health (`access.md`).
-2. Open Prometheus (and optionally Alertmanager) via port-forward (`access.md`).
+2. Open Prometheus (and optionally Alertmanager) with `open-ports.sh`
+   (`access.md`). If a later query cannot connect, re-run it and retry once —
+   that is access plumbing, not a finding, and does not belong in the report.
 3. Pull firing alerts (`prom-alerts.sh --firing`).
 4. Catalog join (`catalog-lookup.py`) using the CSV from the distribution.
 5. Search local docs (`docs-search.py`); open matching troubleshooting HTML.

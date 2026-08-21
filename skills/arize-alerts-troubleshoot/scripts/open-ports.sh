@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # open-ports.sh -- Start read-only port-forwards for self-hosted troubleshooting.
 #
 # Usage:
@@ -16,18 +16,10 @@
 
 set -euo pipefail
 
-err() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
-}
-
-die() {
-  err "$@"
-  exit 1
-}
-
-require_nonempty() {
-  [[ -n "${1:-}" ]] || die "${2}: must not be empty"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+SAFE_KUBECTL="${SCRIPT_DIR}/safe-kubectl.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -58,6 +50,22 @@ mkdir -p "${TMP_DIR}"
 port_answers() {
   local port="$1"
   curl -s -o /dev/null --max-time 3 "http://127.0.0.1:${port}/" >/dev/null 2>&1
+}
+
+# Confirm an existing listener is the service we intend to query. This prevents
+# a local dev server on 9090/9093/8080 from being mistaken for a live tunnel.
+service_answers() {
+  local label="$1"
+  local port="$2"
+  local path
+  case "${label}" in
+    prometheus)   path="/prometheus/api/v1/status/config" ;;
+    alertmanager) path="/alertmanager/api/v2/status" ;;
+    kube-proxy)   path="/version" ;;
+    *)            return 1 ;;
+  esac
+  curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:${port}${path}" \
+    >/dev/null 2>&1
 }
 
 stop_forwards() {
@@ -134,7 +142,7 @@ wait_for_forward() {
       sed 's/^/    /' "${log}" >&2 || true
       return 1
     fi
-    if port_answers "${port}"; then
+    if service_answers "${label}" "${port}"; then
       err "${label}: serving on 127.0.0.1:${port} (PID ${pid})"
       return 0
     fi
@@ -146,8 +154,29 @@ wait_for_forward() {
   return 1
 }
 
-# nohup + disown so the tunnel outlives the shell that launched it. Agents
-# often run each command in a separate shell, which would otherwise reap it.
+# Start a long-lived tunnel in its own session and echo its PID.
+#
+# nohup only ignores SIGHUP. Agent harnesses commonly kill the launching
+# shell's entire process group when a command returns, which reaps the tunnel
+# regardless of nohup/disown. setsid() moves it to a fresh session so that
+# signal never reaches it; execvp keeps the PID stable so callers can still
+# poll it. python3 is used because macOS ships no setsid(1).
+spawn_detached() {
+  local log="$1"
+  shift
+  nohup python3 -c '
+import os, sys
+try:
+    os.setsid()
+except OSError:
+    pass  # already a session leader
+os.execvp(sys.argv[1], sys.argv[1:])
+' "$@" </dev/null >>"${log}" 2>&1 &
+  local pid=$!
+  disown "${pid}" 2>/dev/null || true
+  printf '%s' "${pid}"
+}
+
 start_pf() {
   local label="$1"
   local port="$2"
@@ -156,16 +185,19 @@ start_pf() {
   local log="${TMP_DIR}/${label}-port-forward.log"
 
   if port_answers "${port}"; then
-    err "${label}: port ${port} already serving; reusing it."
-    err "${label}: run '--stop' first if that tunnel points at another namespace or context."
-    return 0
+    if service_answers "${label}" "${port}"; then
+      err "${label}: port ${port} already serving the expected API; reusing it."
+      err "${label}: run '--stop' first if that tunnel points at another namespace or context."
+      return 0
+    fi
+    die "${label}: port ${port} is occupied, but its identity probe failed. Stop the other listener or choose a different local port."
   fi
 
   : > "${log}"
-  nohup kubectl ${KUBECTL_CONTEXT_ARGS[@]+"${KUBECTL_CONTEXT_ARGS[@]}"} \
-    -n "${NAMESPACE}" port-forward "${args[@]}" >>"${log}" 2>&1 &
-  local pid=$!
-  disown "${pid}" 2>/dev/null || true
+  local pid
+  pid="$(spawn_detached "${log}" "${SAFE_KUBECTL}" \
+    ${KUBECTL_CONTEXT_ARGS[@]+"${KUBECTL_CONTEXT_ARGS[@]}"} \
+    -n "${NAMESPACE}" port-forward "${args[@]}")"
   echo "${pid}" >> "${PID_FILE}"
   err "${label}: log ${log}"
 
@@ -176,15 +208,18 @@ start_proxy() {
   local log="${TMP_DIR}/kube-proxy.log"
 
   if port_answers 8080; then
-    err "kube-proxy: port 8080 already serving; reusing it."
-    return 0
+    if service_answers "kube-proxy" 8080; then
+      err "kube-proxy: port 8080 already serving the expected API; reusing it."
+      return 0
+    fi
+    die "kube-proxy: port 8080 is occupied, but its identity probe failed. Stop the other listener or choose a different local port."
   fi
 
   : > "${log}"
-  nohup kubectl ${KUBECTL_CONTEXT_ARGS[@]+"${KUBECTL_CONTEXT_ARGS[@]}"} \
-    proxy --port=8080 >>"${log}" 2>&1 &
-  local pid=$!
-  disown "${pid}" 2>/dev/null || true
+  local pid
+  pid="$(spawn_detached "${log}" "${SAFE_KUBECTL}" \
+    ${KUBECTL_CONTEXT_ARGS[@]+"${KUBECTL_CONTEXT_ARGS[@]}"} \
+    proxy --port=8080)"
   echo "${pid}" >> "${PID_FILE}"
   err "kube-proxy: log ${log}"
 
@@ -269,6 +304,8 @@ main() {
 
   command -v kubectl >/dev/null 2>&1 || die "kubectl not found on PATH"
   command -v curl >/dev/null 2>&1 || die "curl not found on PATH"
+  command -v python3 >/dev/null 2>&1 || die "python3 not found on PATH"
+  [[ -x "${SAFE_KUBECTL}" ]] || die "safe-kubectl.sh is not executable: ${SAFE_KUBECTL}"
 
   KUBECTL_CONTEXT_ARGS=()
   if [[ -n "${context}" ]]; then

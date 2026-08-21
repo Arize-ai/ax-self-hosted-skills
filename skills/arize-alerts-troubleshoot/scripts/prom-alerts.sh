@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # prom-alerts.sh -- Query firing alerts from Prometheus (read-only).
 #
 # Usage:

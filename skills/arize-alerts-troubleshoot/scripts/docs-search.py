@@ -210,7 +210,8 @@ def _citation(
     `target` is the document with the verified anchor appended, and falls back
     to the plain document when the section has no `id`. `link_style` picks the
     form the client can open: `path` for clients that resolve local paths,
-    `file-url` for terminals, which only linkify text carrying a URL scheme.
+    `file-url` by default for broadly clickable links; `path` is available for
+    IDE clients that specifically require a bare local path.
     """
     resolved = path.resolve()
     target = resolved.as_uri() if link_style == "file-url" else str(resolved)
@@ -373,11 +374,11 @@ def main() -> int:
     parser.add_argument(
         "--link-style",
         choices=("path", "file-url"),
-        default=os.environ.get("ARIZE_DOCS_LINK_STYLE", "path"),
+        default=os.environ.get("ARIZE_DOCS_LINK_STYLE", "file-url"),
         help=(
-            "Citation link form: 'path' for clients that open local paths "
-            "(IDE chat); 'file-url' for terminals, which linkify only URLs. "
-            "Defaults to $ARIZE_DOCS_LINK_STYLE or 'path'."
+            "Citation link form: 'file-url' (default) for clickable local "
+            "URLs; 'path' for IDE clients that require bare local paths. "
+            "Defaults to $ARIZE_DOCS_LINK_STYLE or 'file-url'."
         ),
     )
     parser.add_argument(

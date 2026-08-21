@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # am-query.sh -- Query Alertmanager HTTP API (read-only).
 #
 # Usage:

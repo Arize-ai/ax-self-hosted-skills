@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # safe-kubectl.sh -- Read-only kubectl wrapper for this skill.
 #
 # Agents must use this instead of raw kubectl. Mutating verbs are rejected.
@@ -24,12 +24,16 @@ readonly ALLOWED_VERBS_RE="^(get|describe|logs|log|top|explain|api-resources|api
 readonly CLUSTER_VERBS_RE="^(explain|api-resources|api-versions|version|cluster-info|proxy)$"
 
 # Flags that take a separate value argument (next positional).
+# Boolean flags such as --previous are skipped by the generic -* branch below.
 readonly -a VALUE_FLAGS=(
   -n -l -o -c
   --namespace --selector --output --container
   --field-selector --sort-by --template
   --timeout --request-timeout --chunk-size
   --context --kubeconfig --cluster
+  --tail --since --since-time --limit-bytes
+  --pod-running-timeout --max-log-requests
+  --raw
 )
 
 usage() {
@@ -97,6 +101,18 @@ has_context_flag() {
   return 1
 }
 
+has_raw_flag() {
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --raw|--raw=*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
 main() {
   if [[ $# -lt 1 ]]; then
     usage
@@ -119,7 +135,9 @@ main() {
       "api-versions, version, cluster-info, port-forward, proxy"
   fi
 
-  if [[ ! "${verb}" =~ ${CLUSTER_VERBS_RE} ]] && ! has_namespace "$@"; then
+  if [[ ! "${verb}" =~ ${CLUSTER_VERBS_RE} ]] \
+    && ! has_namespace "$@" \
+    && ! has_raw_flag "$@"; then
     die "Namespace is required. Use -n <namespace> or -A for all namespaces."
   fi
 

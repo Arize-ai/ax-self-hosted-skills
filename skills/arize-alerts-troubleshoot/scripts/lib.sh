@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # lib.sh -- Shared helpers for arize-alerts-troubleshoot shell scripts.
 #
 # Source from sibling scripts:

@@ -210,10 +210,9 @@ Per-hit fields:
 | `markdown` | **Paste-ready citation:** `[Page — Section](target)` |
 | `excerpt` | Surrounding text for the match |
 
-`--link-style path` (default) makes `target` an absolute filesystem path, for
-clients that open local paths. `--link-style file-url` makes it `file://…`, for
-terminals, which linkify only text with a URL scheme. `ARIZE_DOCS_LINK_STYLE`
-sets the default.
+`--link-style file-url` (default) makes `target` a `file://…` URL.
+`--link-style path` makes it an absolute filesystem path for IDE clients that
+require bare local paths. `ARIZE_DOCS_LINK_STYLE` sets the default.
 
 Anchors are read from the shipped page, so a non-null `anchor` is guaranteed to
 exist. Matches inside a page's nav/table of contents are ignored, and the chosen

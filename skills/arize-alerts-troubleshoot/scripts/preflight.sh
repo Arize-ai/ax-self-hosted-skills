@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # preflight.sh -- Verify tools, distribution root, cluster access, and version match.
 #
 # Run this before investigating. On failure, print what to ask the user;
@@ -20,6 +20,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${SCRIPT_DIR}/lib.sh"
+SAFE_KUBECTL="${SCRIPT_DIR}/safe-kubectl.sh"
 
 # Failures meaning "this shell cannot reach the API server" rather than
 # "credentials or namespace are wrong". Sandboxed agent shells hit these even
@@ -67,7 +68,7 @@ print_kube_context() {
 check_api_reachable() {
   local err_file rc=0
   err_file="$(mktemp)"
-  kubectl ${KUBECTL_ARGS[@]+"${KUBECTL_ARGS[@]}"} --request-timeout=15s \
+  "${SAFE_KUBECTL}" ${KUBECTL_ARGS[@]+"${KUBECTL_ARGS[@]}"} --request-timeout=15s \
     get --raw /version >/dev/null 2>"${err_file}" || rc=$?
   API_ERR="$(cat "${err_file}" 2>/dev/null || true)"
   rm -f "${err_file}"
@@ -141,18 +142,23 @@ main() {
     exit 1
   fi
   err "tools: ok (kubectl curl jq python3 tar)"
+  [[ -x "${SAFE_KUBECTL}" ]] || {
+    err "safe-kubectl.sh is not executable: ${SAFE_KUBECTL}"
+    exit 1
+  }
 
   if [[ -z "${root}" ]]; then
     ask "the path to the unpacked Arize distribution for this cluster (the folder that contains arize.sh and docs/). Export ARIZE_DISTRIBUTION_ROOT or pass --distribution-root. Do not guess among multiple release folders."
     exit 1
   fi
 
-  if ! python3 "${SCRIPT_DIR}/catalog-lookup.py" \
-    --distribution-root "${root}" --print-distribution-root >/dev/null; then
+  local resolved_root
+  if ! resolved_root="$(python3 "${SCRIPT_DIR}/catalog-lookup.py" \
+    --distribution-root "${root}" --print-distribution-root)"; then
     ask "a valid distribution root. '${root}' is missing arize.sh and/or docs/troubleshooting/selfhosted-alerts-table.csv (or you pointed at the wrong unpack)."
     exit 1
   fi
-  root="$(python3 "${SCRIPT_DIR}/catalog-lookup.py" --distribution-root "${root}" --print-distribution-root)"
+  root="${resolved_root}"
   err "distribution_root: ${root}"
 
   local ctx_name

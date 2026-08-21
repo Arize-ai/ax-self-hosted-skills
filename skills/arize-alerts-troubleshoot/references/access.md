@@ -133,14 +133,15 @@ namespace: an access error and a missing ConfigMap need opposite fixes.
 
 ## Port-forward reliability
 
-A port-forward is a child process of the shell that started it. If each command
-runs in a separate shell, the tunnel can be reaped between steps, and the next
-query fails with a connection error that looks like a broken cluster.
+**Always start tunnels with `open-ports.sh`.** A bare `kubectl port-forward &`
+is a child of the launching shell, so a harness that kills that shell's process
+group between steps reaps the tunnel, and the next query fails with a
+connection error that looks like a broken cluster.
 
-`open-ports.sh` handles this: it launches forwards with `nohup` + `disown`,
-writes kubectl output to `${ARIZE_SKILL_TMP}/<service>-port-forward.log`, waits
-until the port actually answers, and exits non-zero (printing the log) when a
-forward dies on startup.
+`open-ports.sh` starts each forward in its **own session**, so it survives the
+launching shell exiting. It also writes kubectl output to
+`${ARIZE_SKILL_TMP}/<service>-port-forward.log`, waits until the port actually
+answers, and exits non-zero (printing the log) when a forward dies on startup.
 
 ```bash
 "$SKILL_ROOT/scripts/open-ports.sh" --namespace <namespace>   # start + verify
@@ -148,13 +149,15 @@ forward dies on startup.
 "$SKILL_ROOT/scripts/open-ports.sh" --stop                    # tear down
 ```
 
-If forwards keep dying, run the forward and the query in the **same** shell
-invocation, or use the ingress URLs instead. Re-check before each batch of
-queries:
+Re-running is safe and cheap: a port already serving is reused, not duplicated.
+So when a `$PROM`/`$AM` query fails to connect, **re-run `open-ports.sh` and
+retry the query once** before drawing any conclusion. Only if it fails again
+with the port serving is the failure about the cluster.
 
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" "$PROM/api/v1/query?query=up"
-```
+Never report a connection failure against `$PROM`/`$AM` as a cluster finding,
+and do not narrate tunnel bookkeeping as though it were an investigation step —
+re-establish the tunnel and continue. If forwards die repeatedly even when
+started this way, say so explicitly and switch to the ingress URLs.
 
 ## Safety while tunneling
 

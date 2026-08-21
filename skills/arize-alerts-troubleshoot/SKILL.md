@@ -38,7 +38,11 @@ Run **only** these classes of operations unless the user explicitly overrides:
 
 **All ad-hoc kubectl goes through** `$SKILL_ROOT/scripts/safe-kubectl.sh`
 (allowlisted verbs, namespace required except cluster-scoped). Do not invoke
-`kubectl` directly.
+`kubectl` directly. Bundled scripts use the same wrapper for cluster reads and
+tunnels. The only direct calls are the audited, read-only `kubectl config
+current-context` / `config view --minify` checks in `preflight.sh`; `config` is
+intentionally not exposed through the general wrapper because it also contains
+mutating subcommands.
 
 **Forbidden:** `apply`, `create`, `delete`, `patch`, `edit`, `scale`, `exec`,
 `rollout restart`, `cordon`, `drain`, `taint`, mutating HTTP APIs, shelling
@@ -139,17 +143,23 @@ unavailable, ask the user. Details: `references/distribution.md`.
 # Typical application namespace — confirm if unknown
 export ARIZE_NAMESPACE="<namespace>"
 "$SKILL_ROOT/scripts/open-ports.sh" --namespace "$ARIZE_NAMESPACE"
-# Prints PROM / AM export hints; leaves port-forwards running in background
+# Prints PROM / AM export hints. Forwards run in their own session, so they
+# survive this shell exiting; a port already serving is reused, not duplicated.
 ```
 
-Or manually via `safe-kubectl.sh` (see `references/access.md`):
+**If a `$PROM`/`$AM` query fails to connect, re-run the command above and retry
+the query once.** Re-running is idempotent. A connection failure is an access
+issue, never a cluster-health finding, so fix it and continue rather than
+reporting it or narrating the tunnel bookkeeping.
+
+Use `open-ports.sh` rather than backgrounding `port-forward` yourself — a bare
+`&` tunnel is tied to this shell's process group and gets reaped between steps.
+`--status` re-checks listeners; `--stop` tears them down.
+
+The APIs live under `/prometheus` and `/alertmanager` (the bare host returns
+302/404):
 
 ```bash
-"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$ARIZE_NAMESPACE" \
-  port-forward svc/prometheus 9090:9090 &
-"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$ARIZE_NAMESPACE" \
-  port-forward svc/alertmanager 9093:9093 &
-# APIs are under /prometheus and /alertmanager (bare host returns 302/404)
 export PROM="http://localhost:9090/prometheus"
 export AM="http://localhost:9093/alertmanager"
 ```
@@ -199,9 +209,9 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
 ```
 
 Each hit includes `anchor` (the page's real `id`), `section`, `target`, and
-`markdown` — a paste-ready `[Page — Section](/abs/path.html#anchor)` link. Paste
-`markdown` verbatim; sections without an `id` link the whole document. In a
-terminal client add `--link-style file-url`.
+`markdown` — a paste-ready `[Page — Section](file:///abs/path.html#anchor)`
+link. Paste `markdown` verbatim; sections without an `id` link the whole
+document. Use `--link-style path` only for clients that require bare paths.
 
 For each relevant hit, open and review the **complete section**, not only the
 matching excerpt. Extract all remediation steps, verification checks,

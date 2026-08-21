@@ -69,6 +69,7 @@ Set these in the shell before (or while) running the skill:
 | `PROM` / `PROM_URL` | When querying Prometheus | Prometheus base URL, e.g. `http://localhost:9090/prometheus` |
 | `AM` / `AM_URL` | When querying Alertmanager | Alertmanager base URL, e.g. `http://localhost:9093/alertmanager` |
 | `ARIZE_SKILL_TMP` | Optional | Scratch dir for PID files / JSON dumps (default: `/tmp/arize-alerts-troubleshoot`) |
+| `ARIZE_DOCS_LINK_STYLE` | Optional | Local-doc link target: `file-url` (default) or `path` |
 | `CURL_INSECURE` | Optional | Set to `1` to force `curl -k` for non-localhost HTTPS (or pass `--insecure`) |
 
 Example:

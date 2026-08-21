@@ -61,20 +61,19 @@ When **not** to:
 
 ## Cite the exact section
 
-Paste the `markdown` field from `docs-search.py` verbatim — an absolute path with
+Paste the `markdown` field from `docs-search.py` verbatim — a `file://` URL with
 the section anchor appended:
 
 ```markdown
-[Gazette Troubleshooting Guide — Fix: Reset Journal Heads](/Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-reset-journal-heads)
+[Gazette Troubleshooting Guide — Fix: Reset Journal Heads](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-reset-journal-heads)
 ```
 
 When the matched section has no `id`, `markdown` links the whole document
 instead, labeled with just the page title.
 
-In a terminal client, pass `--link-style file-url` (or set
-`ARIZE_DOCS_LINK_STYLE=file-url`) so the target is `file:///…#anchor`. Terminals
-linkify only text with a URL scheme; IDE chat clients open the plain path, which
-is the default.
+`file-url` is the default. Pass `--link-style path` (or set
+`ARIZE_DOCS_LINK_STYLE=path`) only for an IDE client that requires a bare local
+path.
 
 - Anchors come from the shipped page, so never invent, guess, or re-slug one.
 - Public docs work identically: `[label](https://…/page#section-id)`.
