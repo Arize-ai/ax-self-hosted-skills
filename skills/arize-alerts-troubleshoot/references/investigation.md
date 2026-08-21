@@ -61,11 +61,8 @@ Example: for stalled consumers, if the docs say to restart consumers first,
 verify recovery, and use de-sync recovery only if still stalled, present that
 whole sequence and recommend the restart first unless it was already tried.
 
-Cite docs so the reader reaches the right section in one click: paste the
-`markdown` field from `docs-search.py`, a `[Page — Section](file://…#anchor)`
-link. Do not put the URL in backticks or leave it bare — neither is clickable —
-and do not drop the `file://` scheme, which is what preserves the anchor. Never
-retype an anchor or use a `:<line>` suffix. See
+Cite docs with the `markdown` field from `docs-search.py`: a link whose target
+is the document path plus the section anchor. Never retype an anchor. See
 [documentation strategy](docs.md).
 
 ## Root-cause bar

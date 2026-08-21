@@ -198,11 +198,10 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --list-sections docs/troubleshooting/gazette-troubleshooting.html
 ```
 
-Each hit includes `anchor` (the page's real `id`), `section`, `file_url`, and
-`markdown` — a paste-ready `[Page — Section](file://…#anchor)` link. **Paste
-`markdown` verbatim.** It is the only form that is both clickable and anchored:
-a scheme-less path loses the anchor, and a URL in backticks or plain text is not
-clickable. See [citation rules](references/docs.md).
+Each hit includes `anchor` (the page's real `id`), `section`, `target`, and
+`markdown` — a paste-ready `[Page — Section](/abs/path.html#anchor)` link. Paste
+`markdown` verbatim; sections without an `id` link the whole document. In a
+terminal client add `--link-style file-url`.
 
 For each relevant hit, open and review the **complete section**, not only the
 matching excerpt. Extract all remediation steps, verification checks,

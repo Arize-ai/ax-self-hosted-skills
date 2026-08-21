@@ -206,17 +206,14 @@ Per-hit fields:
 | `doc_title` | Page title, from `<h1>`/`<title>` |
 | `section` | Heading text of the matched section (`null` if none verified) |
 | `anchor` | Heading `id` read from the page (`null` if none verified) |
-| `markdown` | **Paste-ready citation:** `[Page — Section](file://…#anchor)` |
-| `file_url` | `file://…#anchor` — the link target inside `markdown` |
-| `abs_path` | Absolute page path, no fragment |
-| `open_command` | `open`/`xdg-open` fallback for clients that block `file://` |
-| `link` | Relative `path#anchor` — for naming a file in prose |
+| `target` | Document with `#anchor` appended, or the plain document |
+| `markdown` | **Paste-ready citation:** `[Page — Section](target)` |
 | `excerpt` | Surrounding text for the match |
 
-Paste `markdown`. It is the only form that is both clickable and anchored: the
-`file://` scheme keeps the fragment (a scheme-less path is treated as a
-filename, so the anchor kills the link), and a link — not a code span or bare
-text — is what makes it clickable. Public docs take the fragment inline too.
+`--link-style path` (default) makes `target` an absolute filesystem path, for
+clients that open local paths. `--link-style file-url` makes it `file://…`, for
+terminals, which linkify only text with a URL scheme. `ARIZE_DOCS_LINK_STYLE`
+sets the default.
 
 Anchors are read from the shipped page, so a non-null `anchor` is guaranteed to
 exist. Matches inside a page's nav/table of contents are ignored, and the chosen

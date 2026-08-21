@@ -22,10 +22,8 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --list-sections docs/troubleshooting/gazette-troubleshooting.html
 ```
 
-Each hit carries `markdown` (**the paste-ready citation link**), plus the parts
-it is built from: `doc_title`, `section`, `anchor` (the verified `id`),
-`file_url`, `abs_path`, `open_command`, and `link` (relative, for naming a file
-in prose). See [how to cite them](#cite-the-exact-section).
+Each hit carries `markdown` — the paste-ready citation link — plus `doc_title`,
+`section`, `anchor` (the verified `id`), and `target`.
 
 Search tips:
 
@@ -63,49 +61,23 @@ When **not** to:
 
 ## Cite the exact section
 
-A citation has to satisfy two things at once: it must be **clickable**, and it
-must **carry the anchor**. Exactly one form does both — a normal markdown link
-whose target is a `file://` URL. Paste `markdown` from `docs-search.py`
-verbatim:
+Paste the `markdown` field from `docs-search.py` verbatim — an absolute path with
+the section anchor appended:
 
 ```markdown
-- [Gazette Troubleshooting Guide — Fix: Reset Journal Heads](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-reset-journal-heads)
-- [Values.yaml Parameters — Operator Parameters](file:///Users/me/onprem/release-11.43.0/docs/reference/values-yaml-parameters.html#operator-parameters)
+[Gazette Troubleshooting Guide — Fix: Reset Journal Heads](/Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-reset-journal-heads)
 ```
 
-The `file://` scheme is what keeps the fragment intact. A scheme-less path is
-treated as a filename, so the client looks for a file literally ending in
-`#fix-reset-journal-heads`, finds nothing, and the link dies; drop the fragment
-to fix that and every section on a page collapses to the same link.
+When the matched section has no `id`, `markdown` links the whole document
+instead, labeled with just the page title.
 
-Never do any of the following:
+In a terminal client, pass `--link-style file-url` (or set
+`ARIZE_DOCS_LINK_STYLE=file-url`) so the target is `file:///…#anchor`. Terminals
+linkify only text with a URL scheme; IDE chat clients open the plain path, which
+is the default.
 
-- `` `file:///…#anchor` `` in backticks, or bare in text — correct target, but
-  code spans and plain text are not clickable.
-- `[label](/Users/…/gazette-troubleshooting.html#anchor)` — no scheme, so the
-  anchor becomes part of the filename and nothing opens.
-- `[label](/Users/…/gazette-troubleshooting.html)` — opens at the top of the
-  page and silently loses the section.
-- `[label](docs/troubleshooting/gazette-troubleshooting.html…)` — the relative
-  `link` field. Use it to name a file in prose, never as a link target.
-- `…/gazette-troubleshooting.html:4610` — a line number is not an anchor.
-- `…#fix-restart-consumers` — anchors are copied, never pluralized,
-  singularized, or retyped from heading text.
-
-Rules:
-
-- Paste `markdown` from `docs-search.py` or `--list-sections`. Both read the
-  `id` out of the shipped page, so the section is known to exist. Never invent,
-  guess, or re-slug an anchor.
-- Name the section heading in the link label — `markdown` already does, as
-  `Page — Section` — so the right part of the page is identifiable even if the
-  link is copied as text.
-- If a hit has `anchor: null`, no anchor was verified: link the page and name
-  the exact heading in the text.
-- Public docs work the same way, already being real URLs:
-  `[label](https://…/page#section-id)`, fragment verified against that page.
-- Offer `open_command` in a bash block **only** as a fallback, when a client
-  refuses to follow `file://` links. It is a command to run, not a citation.
+- Anchors come from the shipped page, so never invent, guess, or re-slug one.
+- Public docs work identically: `[label](https://…/page#section-id)`.
 
 ## Preserve the documented remediation order
 

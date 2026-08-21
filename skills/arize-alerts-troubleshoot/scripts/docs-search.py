@@ -5,9 +5,9 @@ Resolves the distribution root via scripts/distribution.py (same rules as
 catalog-lookup.py).
 
 Each hit reports the nearest verified heading anchor plus `markdown`: a
-paste-ready link, `[Page — Section](file://…#anchor)`, that stays clickable and
-keeps the fragment. Paste that verbatim rather than composing a link — a
-scheme-less path drops the anchor, and a bare URL in text is not clickable.
+paste-ready `[Page — Section](/abs/path.html#anchor)` link. Sections without an
+`id` fall back to a link to the whole document. Use --link-style file-url in a
+terminal client, which linkifies only text carrying a URL scheme.
 
 Usage:
     docs-search.py --query druidloader
@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import pathlib
 import re
 import sys
@@ -193,23 +194,6 @@ def _best_section(
     return best, titles[best]
 
 
-def _file_url(path: pathlib.Path, anchor: str | None) -> str:
-    """Percent-encoded `file://` URI with the anchor appended.
-
-    Only a browser honors the fragment, so this is the form to open in one —
-    not the form to use as a markdown link target in a chat client that
-    resolves local paths itself.
-    """
-    url = path.resolve().as_uri()
-    return f"{url}#{anchor}" if anchor else url
-
-
-def _open_command(file_url: str) -> str:
-    """Shell command that opens the anchored URL in the default browser."""
-    opener = "open" if sys.platform == "darwin" else "xdg-open"
-    return f'{opener} "{file_url}"'
-
-
 def _md_escape(text: str) -> str:
     return text.replace("[", "\\[").replace("]", "\\]")
 
@@ -219,24 +203,26 @@ def _citation(
     anchor: str | None,
     section: str | None,
     doc_title: str,
+    link_style: str = "path",
 ) -> dict:
-    """Every form needed to cite one doc section, so none must be composed.
+    """Paste-ready citation for one doc section.
 
-    `markdown` is the form to paste: an ordinary link whose target is a
-    `file://` URL, which stays clickable *and* keeps the fragment. A
-    scheme-less path is what breaks anchors, since clients that open local
-    files treat the whole target as a filename.
+    `target` is the document with the verified anchor appended, and falls back
+    to the plain document when the section has no `id`. `link_style` picks the
+    form the client can open: `path` for clients that resolve local paths,
+    `file-url` for terminals, which only linkify text carrying a URL scheme.
     """
-    file_url = _file_url(path, anchor)
-    label = f"{doc_title} — {section}" if section else doc_title
+    resolved = path.resolve()
+    target = resolved.as_uri() if link_style == "file-url" else str(resolved)
+    if anchor:
+        target = f"{target}#{anchor}"
+    label = f"{doc_title} — {section}" if section and anchor else doc_title
     return {
+        "doc_title": doc_title,
         "section": section,
         "anchor": anchor,
-        "doc_title": doc_title,
-        "abs_path": str(path.resolve()),
-        "file_url": file_url,
-        "markdown": f"[{_md_escape(label)}]({file_url})",
-        "open_command": _open_command(file_url),
+        "target": target,
+        "markdown": f"[{_md_escape(label)}]({target})",
     }
 
 
@@ -278,6 +264,7 @@ def search_docs(
     path_filter: str | None,
     max_hits: int,
     max_bytes: int,
+    link_style: str = "path",
 ) -> list[dict]:
     hits: list[dict] = []
     q = query.lower()
@@ -304,9 +291,13 @@ def search_docs(
         hits.append(
             {
                 "path": rel_s,
-                # Relative reference, for prose that names the file
-                "link": f"{rel_s}#{anchor}" if anchor else rel_s,
-                **_citation(path, anchor, section, _doc_title(raw, suffix, path)),
+                **_citation(
+                    path,
+                    anchor,
+                    section,
+                    _doc_title(raw, suffix, path),
+                    link_style,
+                ),
                 "excerpt": _excerpt(plain, query)
                 or _excerpt(str(path), query)
                 or plain[:200],
@@ -317,7 +308,9 @@ def search_docs(
     return hits
 
 
-def list_sections(path: pathlib.Path, docs_root: pathlib.Path) -> dict:
+def list_sections(
+    path: pathlib.Path, docs_root: pathlib.Path, link_style: str = "path"
+) -> dict:
     """Every verified anchor in one doc, for citing a section precisely."""
     if not path.is_file():
         raise SystemExit(f"Not a file: {path}")
@@ -334,11 +327,7 @@ def list_sections(path: pathlib.Path, docs_root: pathlib.Path) -> dict:
         "doc_title": doc_title,
         "section_count": len(sections),
         "sections": [
-            {
-                "link": f"{rel_s}#{a}",
-                **_citation(path, a, t, doc_title),
-            }
-            for _, a, t in sections
+            _citation(path, a, t, doc_title, link_style) for _, a, t in sections
         ],
     }
 
@@ -382,6 +371,16 @@ def main() -> int:
         help="List doc files under the distribution and exit",
     )
     parser.add_argument(
+        "--link-style",
+        choices=("path", "file-url"),
+        default=os.environ.get("ARIZE_DOCS_LINK_STYLE", "path"),
+        help=(
+            "Citation link form: 'path' for clients that open local paths "
+            "(IDE chat); 'file-url' for terminals, which linkify only URLs. "
+            "Defaults to $ARIZE_DOCS_LINK_STYLE or 'path'."
+        ),
+    )
+    parser.add_argument(
         "--list-sections",
         metavar="DOC",
         help=(
@@ -407,7 +406,7 @@ def main() -> int:
         target = pathlib.Path(args.list_sections)
         if not target.is_absolute():
             target = root / target
-        payload = list_sections(target.resolve(), docs_root)
+        payload = list_sections(target.resolve(), docs_root, args.link_style)
         payload["distribution_root"] = str(root)
         print(json.dumps(payload, indent=2))
         return 0 if payload["section_count"] else 2
@@ -421,6 +420,7 @@ def main() -> int:
         path_filter=args.path_filter,
         max_hits=args.max_hits,
         max_bytes=args.max_bytes,
+        link_style=args.link_style,
     )
     print(json.dumps({
         "distribution_root": str(root),
