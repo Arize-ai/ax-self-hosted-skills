@@ -37,6 +37,7 @@ $SKILL_ROOT/                       # this skill (directory containing SKILL.md)
   scripts/am-query.sh
   scripts/catalog-lookup.py
   scripts/docs-search.py
+  scripts/verify-doc-links.py      # gate: documentation links resolve
 ```
 Full doc path table: `distribution.md`. Live inventory for this unpack:
 
@@ -133,6 +134,7 @@ when API-style access is preferred.
 | `am-query.sh` | Query Alertmanager v2 API |
 | `catalog-lookup.py` | Join alertname/component → distribution CSV |
 | `docs-search.py` | Search local distribution docs for related text |
+| `verify-doc-links.py` | Check a draft answer's documentation links resolve |
 
 ### `safe-kubectl.sh`
 
@@ -226,6 +228,20 @@ section is the one whose heading matches the query or that contains the most
 occurrences. `--list-sections` dumps every anchor in a page for precise citation.
 
 Exit codes: `0` hits found, `2` no hits (or no sections for `--list-sections`).
+
+### `verify-doc-links.py`
+
+```bash
+python3 "$SKILL_ROOT/scripts/verify-doc-links.py" --file draft.md
+python3 "$SKILL_ROOT/scripts/verify-doc-links.py" --text "$ANSWER"
+pbpaste | python3 "$SKILL_ROOT/scripts/verify-doc-links.py"
+```
+
+Checks every markdown link to a local doc: `file://` scheme present, file
+exists, and `#anchor` present and real (anchors parsed by `docs-search.py`, so
+both agree). `http(s)` links and anchorless formats such as CSV are skipped.
+
+Exit codes: `0` all links resolve, `1` problems printed, `2` usage.
 
 ## Scratch output
 

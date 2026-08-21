@@ -43,6 +43,8 @@ Ask: “Does this help explain why *this* alert fired?” If no, drop it.
 8. Write RCA: alertname, since when, severity, doc evidence, full ordered
    remediation procedure, section-specific links, and next **read-only**
    diagnostic.
+9. Run the draft through `verify-doc-links.py`. Every documentation link must be
+   `[label](file://<path>#<anchor>)`; fix anything it reports before sending.
 
 ## Procedure completeness
 
@@ -65,8 +67,8 @@ whole sequence and recommend the restart first unless it was already tried.
 
 Cite docs with the `markdown` field from `docs-search.py`, never a hand-written
 link. Reword the label if it reads better, but copy the URL exactly: it starts
-with `file://` and ends with `#<anchor>`. See
-[documentation strategy](docs.md).
+with `file://` and ends with `#<anchor>`. Run the finished draft through
+`verify-doc-links.py` before sending. See [documentation strategy](docs.md).
 
 ## Root-cause bar
 

@@ -23,6 +23,33 @@ alerts catalog → gather related documentation from the local distribution and,
 when useful, the public self-hosting docs at
 https://arize.com/docs/ax/selfhosting.
 
+## Documentation link contract
+
+For **every** section of documentation referenced, output:
+
+```markdown
+[<label>](file://<path-to-file>#<anchor>)
+```
+
+For example:
+
+```markdown
+[Reset Journal Heads procedure](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-reset-journal-heads)
+```
+
+Never type these links yourself — paths get mistyped and anchors get dropped.
+Copy each URL from `docs-search.py` (`markdown` field, or `--format markdown`).
+The label is yours to word; the URL is copied byte for byte.
+
+Before sending any answer containing documentation links, run:
+
+```bash
+python3 "$SKILL_ROOT/scripts/verify-doc-links.py" --file <draft>   # or pipe on stdin
+```
+
+It fails on a missing `file://` scheme, a path that does not exist, and a
+missing or invented `#anchor`. Fix what it reports and re-run until it passes.
+
 ## Allowed commands (hard allowlist)
 
 Run **only** these classes of operations unless the user explicitly overrides:
@@ -209,12 +236,11 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --section "reset journal heads" --format markdown
 ```
 
-**Never hand-write a documentation link.** Take it from the `markdown` field —
-`[Page — Section](file:///abs/path.html#anchor)`. The label may be shortened to
-fit a sentence; the URL in parentheses must be copied byte for byte. Every local
-citation starts with `file://` and ends with `#<anchor>`, so a target ending in
-`.html` means the anchor was lost. Verify each link has its `#` fragment before
-answering. See [citation rules](references/docs.md).
+**Never hand-write a documentation link.** Take it from the `markdown` field.
+The label may be shortened to fit a sentence; the URL in parentheses must be
+copied byte for byte, per the documentation link contract above. A target
+ending in `.html` means the anchor was lost — run `verify-doc-links.py` on the
+draft to catch that before answering. See [citation rules](references/docs.md).
 
 For each relevant hit, open and review the **complete section**, not only the
 matching excerpt. Extract all remediation steps, verification checks,

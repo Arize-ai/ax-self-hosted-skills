@@ -81,9 +81,16 @@ text inside the parentheses byte for byte. Every local citation must start with
 `file://` and end with `#<anchor>`; a target ending in `.html` means the anchor
 was dropped and the link lands on the wrong part of the page.
 
-Before sending an answer, check each documentation link for the `#` fragment.
-Re-run the command above rather than reconstructing a URL from memory or from a
-file path seen earlier in the investigation.
+Reconstructing a URL from memory, or from a file path seen earlier in the
+investigation, is how paths get mistyped and anchors get dropped. Always re-run
+the command above instead, then verify the finished draft:
+
+```bash
+python3 "$SKILL_ROOT/scripts/verify-doc-links.py" --file <draft>
+```
+
+It flags a missing `file://` scheme, a nonexistent path, and a missing or
+invented anchor. Fix and re-run until it passes.
 
 When the matched section has no `id`, `markdown` links the whole document
 labeled with just the page title — the only case where a target has no `#`.
