@@ -63,8 +63,9 @@ Example: for stalled consumers, if the docs say to restart consumers first,
 verify recovery, and use de-sync recovery only if still stalled, present that
 whole sequence and recommend the restart first unless it was already tried.
 
-Cite docs with the `markdown` field from `docs-search.py`: a link whose target
-is the document path plus the section anchor. Never retype an anchor. See
+Cite docs with the `markdown` field from `docs-search.py`, never a hand-written
+link. Reword the label if it reads better, but copy the URL exactly: it starts
+with `file://` and ends with `#<anchor>`. See
 [documentation strategy](docs.md).
 
 ## Root-cause bar

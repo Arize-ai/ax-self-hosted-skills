@@ -203,15 +203,18 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --query "<alertname or component>" \
   --max-hits 20
 
-# All verified heading anchors in one page
+# Citation lines for the sections being cited, ready to paste
 python3 "$SKILL_ROOT/scripts/docs-search.py" \
-  --list-sections docs/troubleshooting/gazette-troubleshooting.html
+  --list-sections docs/troubleshooting/gazette-troubleshooting.html \
+  --section "reset journal heads" --format markdown
 ```
 
-Each hit includes `anchor` (the page's real `id`), `section`, `target`, and
-`markdown` — a paste-ready `[Page — Section](file:///abs/path.html#anchor)`
-link. Paste `markdown` verbatim; sections without an `id` link the whole
-document. Use `--link-style path` only for clients that require bare paths.
+**Never hand-write a documentation link.** Take it from the `markdown` field —
+`[Page — Section](file:///abs/path.html#anchor)`. The label may be shortened to
+fit a sentence; the URL in parentheses must be copied byte for byte. Every local
+citation starts with `file://` and ends with `#<anchor>`, so a target ending in
+`.html` means the anchor was lost. Verify each link has its `#` fragment before
+answering. See [citation rules](references/docs.md).
 
 For each relevant hit, open and review the **complete section**, not only the
 matching excerpt. Extract all remediation steps, verification checks,

@@ -15,6 +15,11 @@ Usage:
     docs-search.py --query historical --path troubleshooting
     docs-search.py --list-docs
     docs-search.py --list-sections docs/troubleshooting/gazette-troubleshooting.html
+    docs-search.py --list-sections <doc> --section verify --format markdown
+
+The link label may be reworded to fit the sentence, but the URL inside the
+parentheses must be copied exactly: it always starts with `file://` and ends
+with `#<anchor>`.
 """
 
 from __future__ import annotations
@@ -389,6 +394,23 @@ def main() -> int:
             "(path relative to the distribution root, or absolute)"
         ),
     )
+    parser.add_argument(
+        "--section",
+        metavar="TEXT",
+        help=(
+            "With --list-sections, keep only sections whose heading or anchor "
+            "contains TEXT (case-insensitive)"
+        ),
+    )
+    parser.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help=(
+            "'markdown' prints only the citation lines, so stdout is exactly "
+            "what gets pasted into the answer"
+        ),
+    )
     args = parser.parse_args()
 
     root = resolve_distribution_root(args.distribution_root, skill_dir=skill_dir)
@@ -408,8 +430,21 @@ def main() -> int:
         if not target.is_absolute():
             target = root / target
         payload = list_sections(target.resolve(), docs_root, args.link_style)
+        if args.section:
+            needle = args.section.lower()
+            payload["sections"] = [
+                s
+                for s in payload["sections"]
+                if needle in (s["section"] or "").lower()
+                or needle in (s["anchor"] or "").lower()
+            ]
+            payload["section_count"] = len(payload["sections"])
         payload["distribution_root"] = str(root)
-        print(json.dumps(payload, indent=2))
+        if args.format == "markdown":
+            for s in payload["sections"]:
+                print(s["markdown"])
+        else:
+            print(json.dumps(payload, indent=2))
         return 0 if payload["section_count"] else 2
 
     if not args.query:
@@ -423,6 +458,11 @@ def main() -> int:
         max_bytes=args.max_bytes,
         link_style=args.link_style,
     )
+    if args.format == "markdown":
+        for hit in hits:
+            print(hit["markdown"])
+        return 0 if hits else 2
+
     print(json.dumps({
         "distribution_root": str(root),
         "query": args.query,

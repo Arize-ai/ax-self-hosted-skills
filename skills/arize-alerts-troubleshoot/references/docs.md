@@ -61,21 +61,36 @@ When **not** to:
 
 ## Cite the exact section
 
-Paste the `markdown` field from `docs-search.py` verbatim — a `file://` URL with
-the section anchor appended:
+**Never type a documentation link by hand.** Get it from `docs-search.py`, which
+emits a ready `markdown` field. `--format markdown` makes stdout exactly the
+lines to paste, and `--section` narrows to the sections being cited:
+
+```bash
+python3 "$SKILL_ROOT/scripts/docs-search.py" \
+  --list-sections docs/troubleshooting/gazette-troubleshooting.html \
+  --section "reset journal heads" --format markdown
+```
 
 ```markdown
 [Gazette Troubleshooting Guide — Fix: Reset Journal Heads](file:///Users/me/onprem/release-11.43.0/docs/troubleshooting/gazette-troubleshooting.html#fix-reset-journal-heads)
 ```
 
-When the matched section has no `id`, `markdown` links the whole document
-instead, labeled with just the page title.
+**The label may be reworded; the URL may not.** Shortening the label to fit a
+sentence is fine — `[Reset Journal Heads](…#fix-reset-journal-heads)`. Copy the
+text inside the parentheses byte for byte. Every local citation must start with
+`file://` and end with `#<anchor>`; a target ending in `.html` means the anchor
+was dropped and the link lands on the wrong part of the page.
 
-`file-url` is the default. Pass `--link-style path` (or set
-`ARIZE_DOCS_LINK_STYLE=path`) only for an IDE client that requires a bare local
-path.
+Before sending an answer, check each documentation link for the `#` fragment.
+Re-run the command above rather than reconstructing a URL from memory or from a
+file path seen earlier in the investigation.
+
+When the matched section has no `id`, `markdown` links the whole document
+labeled with just the page title — the only case where a target has no `#`.
 
 - Anchors come from the shipped page, so never invent, guess, or re-slug one.
+- `file-url` is the default. Pass `--link-style path` (or set
+  `ARIZE_DOCS_LINK_STYLE=path`) only for a client that requires bare paths.
 - Public docs work identically: `[label](https://…/page#section-id)`.
 
 ## Preserve the documented remediation order

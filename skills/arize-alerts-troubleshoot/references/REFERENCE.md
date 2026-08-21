@@ -196,7 +196,13 @@ python3 "$SKILL_ROOT/scripts/docs-search.py" --query "ALERTS" --path troubleshoo
 python3 "$SKILL_ROOT/scripts/docs-search.py" --list-docs
 python3 "$SKILL_ROOT/scripts/docs-search.py" \
   --list-sections docs/troubleshooting/gazette-troubleshooting.html
+python3 "$SKILL_ROOT/scripts/docs-search.py" \
+  --list-sections docs/troubleshooting/gazette-troubleshooting.html \
+  --section verify --format markdown
 ```
+
+`--format markdown` prints only citation lines, so stdout is exactly what gets
+pasted. `--section TEXT` filters `--list-sections` by heading or anchor text.
 
 Per-hit fields:
 
@@ -207,7 +213,7 @@ Per-hit fields:
 | `section` | Heading text of the matched section (`null` if none verified) |
 | `anchor` | Heading `id` read from the page (`null` if none verified) |
 | `target` | Document with `#anchor` appended, or the plain document |
-| `markdown` | **Paste-ready citation:** `[Page — Section](target)` |
+| `markdown` | **Paste-ready citation:** `[Page — Section](target)`. Relabel freely; copy the URL exactly |
 | `excerpt` | Surrounding text for the match |
 
 `--link-style file-url` (default) makes `target` a `file://…` URL.
