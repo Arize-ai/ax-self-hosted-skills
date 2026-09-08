@@ -32,7 +32,7 @@ readonly -a VALUE_FLAGS=(
   --context --kubeconfig --cluster
   --tail --since --since-time --limit-bytes
   --pod-running-timeout --max-log-requests
-  --raw
+  --raw --port
 )
 
 # Long flags that do not take a separate value. Any other bare --flag is rejected
@@ -65,11 +65,14 @@ EOF
   exit 1
 }
 
-# Long flags blocked for port-forward/proxy — binding beyond localhost.
+# Flags that could weaken the wrapper's tunnel restrictions.
 readonly -a DENIED_LONG_FLAGS=(
   --address
   --accept-hosts
   --bind-address
+  --disable-filter
+  --reject-methods
+  --reject-paths
 )
 
 is_value_flag() {
@@ -104,7 +107,23 @@ is_allowed_long_flag() {
   return 1
 }
 
-# Find the kubectl verb, skipping flags and their values.
+validate_flags() {
+  local arg flag_name
+  for arg in "$@"; do
+    [[ "${arg}" == --* ]] || continue
+    flag_name="${arg%%=*}"
+
+    if is_denied_long_flag "${flag_name}"; then
+      die "Flag '${flag_name}' is not allowed because it can weaken localhost/read-only tunnel safety."
+    fi
+    if ! is_allowed_long_flag "${flag_name}"; then
+      die "Unsupported flag '${flag_name}'."
+    fi
+  done
+}
+
+# Find the kubectl verb, skipping flags and their values. Flag policy is
+# enforced separately across the complete argv by validate_flags().
 find_verb() {
   local skip_next=false
   local arg
@@ -117,27 +136,6 @@ find_verb() {
     if is_value_flag "${arg}"; then
       skip_next=true
       continue
-    fi
-
-    if [[ "${arg}" == --*=* ]]; then
-      local flag_name="${arg%%=*}"
-      if is_denied_long_flag "${flag_name}"; then
-        die "Flag '${flag_name}' is not allowed — it can bind tunnels beyond localhost."
-      fi
-      if ! is_allowed_long_flag "${flag_name}"; then
-        die "Unsupported flag '${flag_name}'."
-      fi
-      continue
-    fi
-
-    if [[ "${arg}" == --* ]]; then
-      if is_denied_long_flag "${arg}"; then
-        die "Flag '${arg}' is not allowed — it can bind tunnels beyond localhost."
-      fi
-      if is_boolean_long_flag "${arg}"; then
-        continue
-      fi
-      die "Unsupported flag '${arg}'. Use --flag=value form for flags that take a value."
     fi
 
     if [[ "${arg}" == -* ]]; then
@@ -195,6 +193,8 @@ main() {
 
   command -v kubectl >/dev/null 2>&1 || die "kubectl not found on PATH"
 
+  validate_flags "$@"
+
   local verb
   verb="$(find_verb "$@")"
   if [[ -z "${verb}" ]]; then
@@ -214,11 +214,25 @@ main() {
   fi
 
   local extra=()
+  local tunnel_safety=()
   if [[ -n "${KUBE_CONTEXT:-}" ]] && ! has_context_flag "$@"; then
     extra=(--context "${KUBE_CONTEXT}")
   fi
 
-  exec kubectl ${extra[@]+"${extra[@]}"} "$@"
+  case "${verb}" in
+    port-forward)
+      tunnel_safety=(--address=127.0.0.1)
+      ;;
+    proxy)
+      tunnel_safety=(
+        --address=127.0.0.1
+        '--reject-methods=^(POST|PUT|PATCH|DELETE)$'
+      )
+      ;;
+  esac
+
+  exec kubectl ${extra[@]+"${extra[@]}"} "$@" \
+    ${tunnel_safety[@]+"${tunnel_safety[@]}"}
 }
 
 main "$@"

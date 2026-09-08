@@ -72,10 +72,11 @@ Run **only** these classes of operations unless the user explicitly overrides:
 **All ad-hoc kubectl goes through** `$SKILL_ROOT/scripts/safe-kubectl.sh`
 (allowlisted verbs, namespace required except cluster-scoped). Do not invoke
 `kubectl` directly. Bundled scripts use the same wrapper for cluster reads and
-tunnels. The only direct calls are the audited, read-only `kubectl config
-current-context` / `config view --minify` checks in `preflight.sh`; `config` is
-intentionally not exposed through the general wrapper because it also contains
-mutating subcommands.
+tunnels. The only direct calls are audited, read-only config inspection:
+`preflight.sh` uses `config current-context` and `config view --minify`, and
+`open-ports.sh` uses `config current-context` to record tunnel identity.
+`config` is intentionally not exposed through the general wrapper because it
+also contains mutating subcommands.
 
 **Forbidden:** `apply`, `create`, `delete`, `patch`, `edit`, `scale`, `exec`,
 `rollout restart`, `cordon`, `drain`, `taint`, mutating HTTP APIs, shelling
@@ -149,12 +150,12 @@ What it verifies (and what to ask when it fails):
 | ConfigMap `onprem-metadata` | exit 3 | Operator namespace (often `arize-operator`) and ConfigMap read permission |
 | Distribution semver vs `last-applied-release` | exit 4 | The unpack that matches the cluster version |
 
-**Exit 5 — your own shell is blocked, not the cluster.** If `kubectl` fails
-with `Forbidden`, `no such host`, `i/o timeout`, or `dial tcp` while the
-operator's terminal works, the agent shell is sandboxed or firewalled. Re-run
-the skill's commands with unrestricted network access before saying anything
-about VPN, cloud credentials, or the operator namespace. Never report this as a
-cluster fault or a wrong namespace.
+**Exit 5 — your own shell has no network path, not a cluster-health failure.**
+DNS failures, `i/o timeout`, `network is unreachable`, and `dial tcp` errors
+may indicate a sandboxed or firewalled agent shell. Re-run with unrestricted
+network access before diagnosing VPN or cluster health. `Forbidden` is
+different: treat it as authentication, authorization, or gateway access
+failure (exit 3), not proof of sandboxing.
 
 A failed cluster read is **not** a cluster-health finding — see
 [access guide](references/access.md). Version details:
@@ -178,13 +179,15 @@ unavailable, ask the user. Details: [distribution guide](references/distribution
 export ARIZE_NAMESPACE="<namespace>"
 "$SKILL_ROOT/scripts/open-ports.sh" --namespace "$ARIZE_NAMESPACE"
 # Prints PROM / AM export hints. Forwards run in their own session, so they
-# survive this shell exiting; a port already serving is reused, not duplicated.
+# survive this shell exiting; a recorded tunnel is reused only when its
+# namespace and kube context match this invocation.
 ```
 
 **If a `$PROM`/`$AM` query fails to connect, re-run the command above and retry
-the query once.** Re-running is idempotent. A connection failure is an access
-issue, never a cluster-health finding, so fix it and continue rather than
-reporting it or narrating the tunnel bookkeeping.
+the query once.** Re-running safely reuses a recorded tunnel only when its
+namespace and context match. An unrecorded listener must be stopped manually;
+the script prints that distinction. A connection failure is an access issue,
+never a cluster-health finding.
 
 Use `open-ports.sh` rather than backgrounding `port-forward` yourself — a bare
 `&` tunnel is tied to this shell's process group and gets reaped between steps.
@@ -204,6 +207,9 @@ Optional kube API proxy (for API-style access):
 "$SKILL_ROOT/scripts/safe-kubectl.sh" proxy --port=8080 &
 export KUBE_PROXY="http://localhost:8080"
 ```
+
+The wrapper forces the proxy to `127.0.0.1` and rejects
+`POST`/`PUT`/`PATCH`/`DELETE`; callers cannot override those safeguards.
 
 ### 3. Pull firing alerts
 

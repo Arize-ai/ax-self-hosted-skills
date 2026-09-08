@@ -81,6 +81,7 @@ stop_forwards() {
     rm -f "${PID_FILE}" "${META_FILE}"
   else
     err "No PID file at ${PID_FILE}"
+    rm -f "${META_FILE}"
   fi
 }
 
@@ -101,12 +102,12 @@ prune_pid_file() {
   if [[ ${alive} -gt 0 ]]; then
     mv "${tmp}" "${PID_FILE}"
   else
-    rm -f "${tmp}" "${PID_FILE}"
+    rm -f "${tmp}" "${PID_FILE}" "${META_FILE}"
   fi
 }
 
 status_forwards() {
-  local label port
+  local label port label_port
   for label_port in "prometheus:9090" "alertmanager:9093" "kube-proxy:8080"; do
     label="${label_port%%:*}"
     port="${label_port##*:}"
@@ -205,6 +206,24 @@ tunnel_meta_matches() {
     && [[ "${saved_ctx}" == "${EFFECTIVE_CONTEXT:-}" ]]
 }
 
+require_matching_tunnel_meta() {
+  local label="$1"
+  local port="$2"
+
+  if [[ ! -f "${META_FILE}" ]]; then
+    die "${label}: port ${port} serves the expected API, but no tunnel metadata is recorded; namespace/context cannot be verified." \
+      "Stop the process listening on port ${port} manually and retry. '--stop' can only stop PIDs recorded in ${PID_FILE}."
+  fi
+
+  if ! tunnel_meta_matches; then
+    if [[ -f "${PID_FILE}" ]]; then
+      die "${label}: port ${port} belongs to a different namespace/context. Run '--stop' first."
+    fi
+    die "${label}: port ${port} metadata does not match, but no managed PID is recorded." \
+      "Stop the process listening on port ${port} manually and retry."
+  fi
+}
+
 remove_pid() {
   local target_pid="$1"
   local tmp
@@ -231,9 +250,7 @@ start_pf() {
 
   if port_answers "${port}"; then
     if service_answers "${label}" "${port}"; then
-      if ! tunnel_meta_matches; then
-        die "${label}: port ${port} already serving, but for a different namespace/context. Run '--stop' first."
-      fi
+      require_matching_tunnel_meta "${label}" "${port}"
       err "${label}: port ${port} already serving the expected API; reusing it."
       return 0
     fi
@@ -262,9 +279,7 @@ start_proxy() {
 
   if port_answers 8080; then
     if service_answers "kube-proxy" 8080; then
-      if ! tunnel_meta_matches; then
-        die "kube-proxy: port 8080 already serving, but for a different namespace/context. Run '--stop' first."
-      fi
+      require_matching_tunnel_meta "kube-proxy" 8080
       err "kube-proxy: port 8080 already serving the expected API; reusing it."
       return 0
     fi

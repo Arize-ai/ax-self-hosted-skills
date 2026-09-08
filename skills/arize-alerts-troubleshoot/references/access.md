@@ -72,6 +72,10 @@ curl -s -o /dev/null -w "%{http_code}\n" "$AM/api/v2/status"
    export KUBE_PROXY="http://localhost:8080"
    ```
 
+   The wrapper binds the proxy to `127.0.0.1` and rejects
+   `POST`/`PUT`/`PATCH`/`DELETE`. It rejects flags that could weaken those
+   safeguards.
+
 4. **In-cluster DNS** — only when the agent runs inside the cluster:
 
    ```text
@@ -110,15 +114,16 @@ Do **not** port-forward everything by default — start with Prometheus
 Distinguish **cluster access problems** from **Arize problems** before drawing any
 conclusion. A failed read is not evidence about the cluster's health.
 
-**First rule:** if the same `kubectl` command works in the operator's own
-terminal but fails for the agent, the agent's shell is sandboxed or firewalled.
-That is a **tooling** problem. Re-run with unrestricted network access before
-mentioning VPN, cloud credentials, namespaces, or cluster health.
-`preflight.sh` exits **5** for this case and prints the API endpoint it tried.
+If the operator's terminal works but the agent gets DNS, timeout, routing, or
+connection errors, suspect a sandboxed or firewalled agent shell first. Re-run
+with unrestricted network access before diagnosing VPN or cluster health.
+`preflight.sh` exits **5** for network-path failures and prints the endpoint.
+An HTTP `Forbidden` response is instead an authentication, authorization, or
+gateway access failure and exits **3**.
 
 | Symptom | Meaning | Do this |
 |---|---|---|
-| `Unable to connect to the server: Forbidden` | The shell cannot reach the API server (sandboxed agent shell, network policy, proxy) | Re-run outside the sandbox / with full network access. Do not re-interpret as a namespace, credential, or install problem |
+| `Unable to connect to the server: Forbidden` | Authentication, authorization, or gateway access denied | Re-authenticate and verify access for the active context; treat as exit 3, not a network-path/sandbox diagnosis |
 | DNS timeout on the API hostname (e.g. `*.eks.amazonaws.com`) | The shell's resolver is blocked, common in agent sandboxes with domain allowlists | Re-run with unrestricted network access before blaming VPN or credentials |
 | `Unable to connect to the server: dial tcp ... i/o timeout` | No route / VPN down (or blocked shell) | Confirm the shell is unsandboxed, then restore connectivity |
 | `error: You must be logged in to the server` | Expired or missing credentials | Re-authenticate, confirm `kubectl config current-context` |
@@ -149,10 +154,11 @@ answers, and exits non-zero (printing the log) when a forward dies on startup.
 "$SKILL_ROOT/scripts/open-ports.sh" --stop                    # tear down
 ```
 
-Re-running is safe and cheap: a port already serving is reused, not duplicated.
-So when a `$PROM`/`$AM` query fails to connect, **re-run `open-ports.sh` and
-retry the query once** before drawing any conclusion. Only if it fails again
-with the port serving is the failure about the cluster.
+Re-running is safe and cheap for tunnels created by this helper: a listener is
+reused only when its recorded namespace and context match. If the expected API
+answers but no metadata is recorded, the script refuses to guess and tells the
+operator to stop that listener manually. When a `$PROM`/`$AM` query fails,
+**re-run `open-ports.sh` and retry once** before drawing any conclusion.
 
 Never report a connection failure against `$PROM`/`$AM` as a cluster finding,
 and do not narrate tunnel bookkeeping as though it were an investigation step —
@@ -161,7 +167,7 @@ started this way, say so explicitly and switch to the ingress URLs.
 
 ## Safety while tunneling
 
-- Port-forward and proxy are allowed; they only expose APIs locally.
-- Still issue **GET-only** requests against those ports.
+- Port-forward and proxy bind locally. The wrapper also rejects mutating HTTP
+  methods on the proxy; still issue **GET-only** requests against those ports.
 - Tear down background forwards when finished (`kill` the PIDs printed by
   `open-ports.sh`, or close the terminal jobs).

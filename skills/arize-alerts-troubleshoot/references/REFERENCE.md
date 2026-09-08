@@ -123,7 +123,9 @@ curl -s http://localhost:8080/api/v1/namespaces/<ns>/pods | jq '.items[].metadat
 ```
 
 Prefer `safe-kubectl.sh get/describe/logs` for routine checks; use the proxy
-when API-style access is preferred.
+when API-style access is preferred. The wrapper binds it to `127.0.0.1`,
+rejects `POST`/`PUT`/`PATCH`/`DELETE`, and prevents callers from overriding
+those filters.
 
 ## Scripts
 
@@ -163,7 +165,7 @@ when API-style access is preferred.
 | 0 | All checks passed |
 | 1 | Missing tools or distribution root — ask the user |
 | 2 | Usage error |
-| 3 | API server reachable but `onprem-metadata` unreadable (namespace / RBAC) |
+| 3 | Authentication/authorization/gateway access failure, or `onprem-metadata` unreadable |
 | 4 | Distribution version does not match the cluster |
 | 5 | This shell has no network path to the API server (agent sandbox / firewall) |
 

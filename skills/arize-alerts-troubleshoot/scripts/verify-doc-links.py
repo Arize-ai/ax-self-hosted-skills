@@ -28,7 +28,6 @@ import urllib.parse
 
 _MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(\s*([^)\s]+)\s*\)")
 _FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})[ \t]*([^\s`]*)", re.MULTILINE)
-_DOC_SUFFIXES = {".html", ".htm", ".md", ".csv", ".txt"}
 _HTML_SUFFIXES = {".html", ".htm"}
 _ANCHOR_SUFFIXES = {".html", ".htm", ".md"}
 
@@ -154,11 +153,19 @@ def check_links(text: str, docs_search) -> list[str]:
             continue
 
         if not anchors:
-            problems.append(
-                f"[{label}] could not parse anchors in {file_path}\n"
-                f"    cannot verify #{fragment}; re-run docs-search.py --list-sections "
-                f"{file_path} --format markdown"
-            )
+            if suffix == ".md":
+                problems.append(
+                    f"[{label}] cannot verify #{fragment}: {file_path} has no "
+                    f"explicit Markdown {{#id}} anchors\n"
+                    f"    generated heading slugs vary by renderer; cite the "
+                    f"whole document or add an explicit anchor"
+                )
+            else:
+                problems.append(
+                    f"[{label}] could not parse anchors in {file_path}\n"
+                    f"    cannot verify #{fragment}; re-run docs-search.py "
+                    f"--list-sections {file_path} --format markdown"
+                )
         elif fragment not in anchors:
             problems.append(
                 f"[{label}] anchor #{fragment} is not in the page\n"

@@ -59,11 +59,6 @@ def _strip_html(text: str) -> str:
     return _WS_RE.sub(" ", text).strip()
 
 
-def _slugify(text: str) -> str:
-    slug = re.sub(r"[^a-z0-9\s-]", "", text.lower())
-    return re.sub(r"[\s-]+", "-", slug).strip("-")
-
-
 def _heading_title(raw_inner: str) -> str:
     title = _strip_html(raw_inner)
     title = _PERMALINK_RE.sub("", title)
@@ -94,8 +89,8 @@ def _collect_sections(raw: str, suffix: str) -> list[tuple[int, str, str]]:
     """Return [(offset, anchor, title)] sorted by offset.
 
     Only anchors that actually exist in the file are returned, so callers never
-    invent a fragment. Markdown headings without an explicit {#id} fall back to
-    the conventional GitHub-style slug.
+    invent a fragment. Markdown anchors are accepted only when explicitly
+    authored as ``{#id}``; generated slugs vary between renderers.
     """
     sections: list[tuple[int, str, str]] = []
 
@@ -105,17 +100,8 @@ def _collect_sections(raw: str, suffix: str) -> list[tuple[int, str, str]]:
             if title:
                 sections.append((m.start(), m.group(2), title))
     elif suffix == ".md":
-        explicit: set[int] = set()
         for m in _MD_ANCHOR_RE.finditer(raw):
-            explicit.add(m.start())
             sections.append((m.start(), m.group(3), m.group(2).strip()))
-        for m in _MD_HEADING_RE.finditer(raw):
-            if m.start() in explicit:
-                continue
-            title = m.group(2).strip()
-            slug = _slugify(title)
-            if slug:
-                sections.append((m.start(), slug, title))
 
     sections.sort(key=lambda s: s[0])
     return sections
