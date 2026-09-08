@@ -38,7 +38,7 @@ Search tips:
 - Read the complete relevant section, including numbered steps, prerequisites,
   warnings, and fallback/escalation steps. Do not stop at the first matching
   keyword or quote only the most invasive step.
-- For the full path inventory, see [the distribution guide](distribution.md)
+- For the full path inventory, see [the distribution guide](references/distribution.md)
   or `--list-docs`.
 
 ## Public docs

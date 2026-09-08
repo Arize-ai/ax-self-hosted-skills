@@ -68,7 +68,7 @@ whole sequence and recommend the restart first unless it was already tried.
 Cite docs with the `markdown` field from `docs-search.py`, never a hand-written
 link. Reword the label if it reads better, but copy the URL exactly: it starts
 with `file://` and ends with `#<anchor>`. Run the finished draft through
-`verify-doc-links.py` before sending. See [documentation strategy](docs.md).
+`verify-doc-links.py` before sending. See [documentation strategy](references/docs.md).
 
 ## Root-cause bar
 

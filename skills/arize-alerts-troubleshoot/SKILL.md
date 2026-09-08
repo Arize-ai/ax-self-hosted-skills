@@ -8,9 +8,13 @@ description: >-
 metadata:
   author: arize
   version: "1.0"
+compatibility: >-
+  Requires kubectl, curl, jq, python3, and tar; read-only access to the
+  self-hosted cluster; and an unpacked Arize distribution matching the cluster
+  release.
 ---
 
-# Self-Hosted Troubleshoot
+# Arize Alerts Troubleshoot Skill
 
 Diagnose firing alerts on a self-hosted Arize AX cluster. Requires:
 
@@ -92,7 +96,7 @@ long bash pipelines.
 1. Unpacked Arize distribution that matches the cluster release (contains
    `arize.sh`, `docs/`). Prefer exporting `ARIZE_DISTRIBUTION_ROOT` to that
    unpack root. Script flags `--distribution-root` / `--docs-root` may also
-   point at the bare `docs/` folder (see `references/distribution.md`)
+   point at the bare `docs/` folder (see [distribution guide](references/distribution.md))
 2. Set **`ARIZE_DISTRIBUTION_ROOT`** to that directory (or pass
    `--distribution-root`) — never guess among multiple release folders
 3. `kubectl` context pointed at the cluster; `curl`, `jq`, `python3`, `tar`.
@@ -153,7 +157,8 @@ about VPN, cloud credentials, or the operator namespace. Never report this as a
 cluster fault or a wrong namespace.
 
 A failed cluster read is **not** a cluster-health finding — see
-`references/access.md`. Version details: `references/distribution.md`.
+[access guide](references/access.md). Version details:
+[distribution guide](references/distribution.md).
 
 Prefer `$ARIZE_DISTRIBUTION_ROOT/values.yaml` when that exact file exists. If
 it is missing, read ConfigMap `arizeapp` in the operator namespace:
@@ -164,7 +169,7 @@ it is missing, read ConfigMap `arizeapp` in the operator namespace:
 ```
 
 Do not search the filesystem for alternate values files. If both sources are
-unavailable, ask the user. Details: `references/distribution.md`.
+unavailable, ask the user. Details: [distribution guide](references/distribution.md).
 
 ### 2. Open ports (API-first)
 
@@ -269,7 +274,7 @@ Primary local assets for alert RCA (relative to `$ARIZE_DISTRIBUTION_ROOT`):
 | Install values | `values.yaml` at distribution root; else ConfigMap `arizeapp` in the operator namespace |
 
 Full docs inventory (architecture, install/platform, guides, advanced, ops,
-reference, troubleshooting): `references/distribution.md`. Live list for this
+reference, troubleshooting): [distribution guide](references/distribution.md). Live list for this
 unpack:
 
 ```bash
@@ -343,9 +348,9 @@ python3 "$SKILL_ROOT/scripts/catalog-lookup.py" --alertname "up" --component "Hi
 
 ## References
 
-- `references/REFERENCE.md` — APIs, scripts, diagnose loop
-- `references/access.md` — port-forward / proxy / namespace tips
-- `references/distribution.md` — finding the docs root
-- `references/docs.md` — local vs public documentation strategy
-- `references/architecture.md` — component orientation
-- `references/investigation.md` — scope and RCA bar
+- [REFERENCE guide](references/REFERENCE.md) — APIs, scripts, diagnose loop
+- [access guide](references/access.md) — port-forward / proxy / namespace tips
+- [distribution guide](references/distribution.md) — finding the docs root
+- [documentation strategy](references/docs.md) — local vs public documentation strategy
+- [architecture guide](references/architecture.md) — component orientation
+- [investigation guide](references/investigation.md) — scope and RCA bar

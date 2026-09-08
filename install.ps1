@@ -82,8 +82,7 @@ function Find-Agents {
     if (Test-Path (Join-Path $Base ".cursor"))         { $found += "cursor" }
     if (Test-Path (Join-Path $Base ".claude"))         { $found += "claude" }
     if (Test-Path (Join-Path $Base ".codex"))          { $found += "codex" }
-    if ((Test-Path (Join-Path $Base ".github\copilot")) -or
-        (Get-Command gh -ErrorAction SilentlyContinue)) { $found += "copilot" }
+    if (Test-Path (Join-Path $Base ".github\copilot")) { $found += "copilot" }
     return $found
 }
 
@@ -113,7 +112,7 @@ if ($Agent.Count -gt 0) {
 
 if ($Agents.Count -eq 0) {
     if (-not $Yes) {
-        Write-Host "No agents detected (looked for .cursor/, .claude/, .codex/, .github/copilot/ directories and cursor/claude/codex/gh binaries)."
+        Write-Host "No agents detected (looked for .cursor/, .claude/, .codex/, .github/copilot/ directories and cursor/claude/codex binaries)."
         Write-Host ""
         Write-Host "Which agent(s) are you using?"
         Write-Host "  1) cursor"
@@ -133,7 +132,7 @@ if ($Agents.Count -eq 0) {
             }
         }
     } else {
-        Write-Host "No agents detected (looked for .cursor/, .claude/, .codex/, .github/copilot/ directories and cursor/claude/codex/gh binaries)."
+        Write-Host "No agents detected (looked for .cursor/, .claude/, .codex/, .github/copilot/ directories and cursor/claude/codex binaries)."
         Write-Host "Use -Agent <name> to specify manually, e.g.: .\install.ps1 -Agent cursor"
         exit 1
     }
@@ -153,7 +152,7 @@ if (-not [System.IO.Path]::IsPathRooted($Base)) {
 }
 $Base = [System.IO.Path]::GetFullPath($Base)
 
-Write-Host "Arize Skills Installer"
+Write-Host "Arize Self-Hosted Skills Installer"
 Write-Host "======================"
 Write-Host ""
 Write-Host "Detected agents: $($Agents -join ', ')"

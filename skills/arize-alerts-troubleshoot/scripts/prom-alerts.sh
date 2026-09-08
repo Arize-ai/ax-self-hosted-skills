@@ -107,35 +107,40 @@ summarize_firing() {
 
   if [[ "${as_json}" == "json" ]]; then
     jq '[
-      .data.result[]?
+      .data.alerts[]?
+      | select(.state == "firing")
       | {
-          alertname: (.metric.alertname // null),
-          severity: (.metric.severity // .metric.channel // null),
-          component: (.metric.component // null),
-          alertstate: (.metric.alertstate // null),
-          summary: null,
-          description: null,
-          startsAt: (if .value[0] then (.value[0] | todateiso8601) else null end),
+          alertname: (.labels.alertname // null),
+          severity: (.labels.severity // .labels.channel // null),
+          component: (.labels.component // null),
+          alertstate: (.state // null),
+          summary: (.annotations.summary // null),
+          description: (.annotations.description // null),
+          startsAt: (.activeAt // null),
           endsAt: null,
-          labels: .metric,
-          value: .value[1]
+          labels: .labels,
+          value: (.value // null)
         }
     ]' <<<"${raw}"
     return
   fi
 
-  jq -r '
-    .data.result[]? |
-    [
-      (.metric.alertname // "-"),
-      (.metric.severity // .metric.channel // "-"),
-      (.metric.component // "-"),
-      (.metric.alertstate // "-"),
-      (.value[1] // "-")
+  local tsv
+  tsv="$(jq -r '
+    .data.alerts[]?
+    | select(.state == "firing")
+    | [
+      (.labels.alertname // "-"),
+      (.labels.severity // .labels.channel // "-"),
+      (.labels.component // "-"),
+      (.state // "-"),
+      (.activeAt // "-")
     ] | @tsv
-  ' <<<"${raw}" \
-    | (printf 'ALERTNAME\tSEVERITY\tCOMPONENT\tSTATE\tVALUE\n'; cat) \
-    | column -t -s $'\t' 2>/dev/null || cat
+  ' <<<"${raw}")"
+  {
+    printf 'ALERTNAME\tSEVERITY\tCOMPONENT\tSTATE\tSTARTS_AT\n'
+    [[ -n "${tsv}" ]] && printf '%s\n' "${tsv}"
+  } | { column -t -s $'\t' 2>/dev/null || cat; }
 }
 
 main() {
@@ -188,7 +193,7 @@ main() {
   local raw
   case "${mode}" in
     --firing)
-      raw="$(prom_query "${prom_url}" 'ALERTS{alertstate="firing"}' "${insecure}")"
+      raw="$(prom_get "${prom_url}" "/api/v1/alerts" "${insecure}")"
       local status
       status="$(jq -r '.status // "error"' <<<"${raw}")"
       [[ "${status}" == "success" ]] || die "Prometheus returned status=${status}: ${raw}"

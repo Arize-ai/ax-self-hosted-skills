@@ -24,7 +24,6 @@ readonly ALLOWED_VERBS_RE="^(get|describe|logs|log|top|explain|api-resources|api
 readonly CLUSTER_VERBS_RE="^(explain|api-resources|api-versions|version|cluster-info|proxy)$"
 
 # Flags that take a separate value argument (next positional).
-# Boolean flags such as --previous are skipped by the generic -* branch below.
 readonly -a VALUE_FLAGS=(
   -n -l -o -c
   --namespace --selector --output --container
@@ -34,6 +33,18 @@ readonly -a VALUE_FLAGS=(
   --tail --since --since-time --limit-bytes
   --pod-running-timeout --max-log-requests
   --raw
+)
+
+# Long flags that do not take a separate value. Any other bare --flag is rejected
+# so its value is not mistaken for the kubectl verb.
+readonly -a BOOLEAN_LONG_FLAGS=(
+  --previous
+  --all-namespaces
+  --ignore-not-found
+  --show-labels
+  --show-managed-fields
+  --watch
+  --watch-only
 )
 
 usage() {
@@ -54,24 +65,52 @@ EOF
   exit 1
 }
 
+is_value_flag() {
+  local arg="$1" flag
+  for flag in "${VALUE_FLAGS[@]}"; do
+    [[ "${arg}" == "${flag}" ]] && return 0
+  done
+  return 1
+}
+
+is_boolean_long_flag() {
+  local arg="$1" flag
+  for flag in "${BOOLEAN_LONG_FLAGS[@]}"; do
+    [[ "${arg}" == "${flag}" ]] && return 0
+  done
+  return 1
+}
+
 # Find the kubectl verb, skipping flags and their values.
 find_verb() {
   local skip_next=false
-  local arg flag
+  local arg
   for arg in "$@"; do
     if [[ "${skip_next}" == true ]]; then
       skip_next=false
       continue
     fi
-    for flag in "${VALUE_FLAGS[@]}"; do
-      if [[ "${arg}" == "${flag}" ]]; then
-        skip_next=true
-        continue 2
+
+    if is_value_flag "${arg}"; then
+      skip_next=true
+      continue
+    fi
+
+    if [[ "${arg}" == --*=* ]]; then
+      continue
+    fi
+
+    if [[ "${arg}" == --* ]]; then
+      if is_boolean_long_flag "${arg}"; then
+        continue
       fi
-    done
+      die "Unsupported flag '${arg}'. Use --flag=value form for flags that take a value."
+    fi
+
     if [[ "${arg}" == -* ]]; then
       continue
     fi
+
     echo "${arg}"
     return 0
   done

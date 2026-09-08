@@ -4,6 +4,14 @@ Agent Skills that guide AI coding agents in operating and troubleshooting **self
 
 Works with Cursor, Claude Code, Codex, GitHub Copilot, Windsurf, and [40+ other agents](https://github.com/vercel-labs/skills#supported-agents).
 
+## Self-Hosted Skills Quick Start
+Troubleshoot an existing Arize self-hosted deployment - give your coding agent this prompt:
+
+> Install Arize self-hosted skills from https://github.com/Arize-ai/ax-self-hosted-skills and use the arize-alerts-troubleshoot skill to diagnose the alerts currently firing on my cluster. 
+
+
+## Installation
+
 ### Option 1: npx (recommended)
 
 Install all skills non-interactively — this is what the agent runs for the prompt above:

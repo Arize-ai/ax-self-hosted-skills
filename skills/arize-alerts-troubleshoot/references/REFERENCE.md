@@ -91,11 +91,16 @@ GET /api/v1/alerts
 GET /api/v1/label/<name>/values
 ```
 
-Firing alert series (used by `prom-alerts.sh`):
+Firing alerts (used by `prom-alerts.sh --firing`):
 
 ```
-ALERTS{alertstate="firing"}
+GET /api/v1/alerts
 ```
+
+The script keeps alerts where `state == "firing"` and maps `activeAt` to
+`startsAt` in `--json` output. Prefer this over instant-querying
+`ALERTS{alertstate="firing"}` — that series does not carry the alert start
+time.
 
 ## Alertmanager HTTP API (v2)
 

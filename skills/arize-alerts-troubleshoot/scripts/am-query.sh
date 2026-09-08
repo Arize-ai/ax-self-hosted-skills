@@ -106,7 +106,8 @@ summarize_alerts() {
     return
   fi
 
-  jq -r '
+  local tsv
+  tsv="$(jq -r '
     .[] |
     [
       (.labels.alertname // "-"),
@@ -115,9 +116,11 @@ summarize_alerts() {
       (.startsAt // "-"),
       ((.annotations.summary // "") | gsub("\n"; " "))
     ] | @tsv
-  ' <<<"${raw}" \
-    | (printf 'ALERTNAME\tSEVERITY\tCOMPONENT\tSTARTS_AT\tSUMMARY\n'; cat) \
-    | column -t -s $'\t' 2>/dev/null || cat
+  ' <<<"${raw}")"
+  {
+    printf 'ALERTNAME\tSEVERITY\tCOMPONENT\tSTARTS_AT\tSUMMARY\n'
+    [[ -n "${tsv}" ]] && printf '%s\n' "${tsv}"
+  } | { column -t -s $'\t' 2>/dev/null || cat; }
 }
 
 main() {

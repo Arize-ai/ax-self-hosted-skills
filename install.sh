@@ -135,7 +135,7 @@ detect_agents() {
   command -v cursor &>/dev/null && add_agent "cursor"
   command -v claude &>/dev/null && add_agent "claude"
   command -v codex  &>/dev/null && add_agent "codex"
-  command -v gh     &>/dev/null && add_agent "copilot"
+  return 0
 }
 
 if [[ "$GLOBAL" != true && -z "$PROJECT_DIR" ]]; then
@@ -154,7 +154,7 @@ fi
 
 if [[ ${#AGENTS[@]} -eq 0 ]]; then
   if [[ -t 0 && "$YES" != true ]]; then
-    echo "No agents detected (checked for .cursor/, .claude/, .codex/, .github/copilot/ directories and cursor/claude/codex/gh binaries)."
+    echo "No agents detected (checked for .cursor/, .claude/, .codex/, .github/copilot/ directories and cursor/claude/codex binaries)."
     echo ""
     echo "Which agent(s) are you using?"
     echo "  1) cursor"
@@ -174,7 +174,7 @@ if [[ ${#AGENTS[@]} -eq 0 ]]; then
       esac
     done
   else
-    echo "No agents detected (checked for .cursor/, .claude/, .codex/, .github/copilot/ directories and cursor/claude/codex/gh binaries)."
+    echo "No agents detected (checked for .cursor/, .claude/, .codex/, .github/copilot/ directories and cursor/claude/codex binaries)."
     echo "Use --agent <name> to specify manually, e.g.: ./install.sh --agent cursor"
     exit 1
   fi

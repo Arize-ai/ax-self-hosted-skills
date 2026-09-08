@@ -101,7 +101,6 @@ prune_pid_file() {
     mv "${tmp}" "${PID_FILE}"
   else
     rm -f "${tmp}" "${PID_FILE}"
-    : > "${PID_FILE}"
   fi
 }
 
@@ -190,7 +189,7 @@ start_pf() {
       err "${label}: run '--stop' first if that tunnel points at another namespace or context."
       return 0
     fi
-    die "${label}: port ${port} is occupied, but its identity probe failed. Stop the other listener or choose a different local port."
+    die "${label}: port ${port} is occupied, but its identity probe failed. Stop the other listener, or run '--stop' to tear down forwards from a previous run."
   fi
 
   : > "${log}"
@@ -212,7 +211,7 @@ start_proxy() {
       err "kube-proxy: port 8080 already serving the expected API; reusing it."
       return 0
     fi
-    die "kube-proxy: port 8080 is occupied, but its identity probe failed. Stop the other listener or choose a different local port."
+    die "kube-proxy: port 8080 is occupied, but its identity probe failed. Stop the other listener, or run '--stop' to tear down forwards from a previous run."
   fi
 
   : > "${log}"
