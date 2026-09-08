@@ -44,6 +44,7 @@ EOF
 
 TMP_DIR="${ARIZE_SKILL_TMP:-/tmp/arize-alerts-troubleshoot}"
 PID_FILE="${TMP_DIR}/port-forwards.pid"
+META_FILE="${TMP_DIR}/port-forwards.meta"
 mkdir -p "${TMP_DIR}"
 
 # A listener answering HTTP on the port means curl connected (any status code).
@@ -77,7 +78,7 @@ stop_forwards() {
         err "Stopped PID ${pid}"
       fi
     done < "${PID_FILE}"
-    rm -f "${PID_FILE}"
+    rm -f "${PID_FILE}" "${META_FILE}"
   else
     err "No PID file at ${PID_FILE}"
   fi
@@ -105,14 +106,22 @@ prune_pid_file() {
 }
 
 status_forwards() {
-  local port
-  for port in 9090 9093 8080; do
-    if port_answers "${port}"; then
-      echo "port ${port}: serving"
+  local label port
+  for label_port in "prometheus:9090" "alertmanager:9093" "kube-proxy:8080"; do
+    label="${label_port%%:*}"
+    port="${label_port##*:}"
+    if service_answers "${label}" "${port}"; then
+      echo "port ${port} (${label}): serving"
+    elif port_answers "${port}"; then
+      echo "port ${port}: listener (identity probe failed)"
     else
       echo "port ${port}: no listener"
     fi
   done
+  if [[ -f "${META_FILE}" ]]; then
+    echo "meta_file: ${META_FILE}"
+    sed 's/^/  /' "${META_FILE}"
+  fi
   if [[ -f "${PID_FILE}" ]]; then
     echo "pid_file: ${PID_FILE}"
     while read -r pid; do
@@ -176,6 +185,43 @@ os.execvp(sys.argv[1], sys.argv[1:])
   printf '%s' "${pid}"
 }
 
+write_forward_meta() {
+  {
+    echo "namespace=${NAMESPACE}"
+    echo "context=${EFFECTIVE_CONTEXT:-}"
+  } > "${META_FILE}"
+}
+
+tunnel_meta_matches() {
+  [[ -f "${META_FILE}" ]] || return 1
+  local saved_ns="" saved_ctx=""
+  while IFS='=' read -r key value; do
+    case "${key}" in
+      namespace) saved_ns="${value}" ;;
+      context) saved_ctx="${value}" ;;
+    esac
+  done < "${META_FILE}"
+  [[ "${saved_ns}" == "${NAMESPACE}" ]] \
+    && [[ "${saved_ctx}" == "${EFFECTIVE_CONTEXT:-}" ]]
+}
+
+remove_pid() {
+  local target_pid="$1"
+  local tmp
+  tmp="$(mktemp "${TMP_DIR}/port-forwards.XXXXXX")"
+  if [[ -f "${PID_FILE}" ]]; then
+    while read -r pid; do
+      [[ -z "${pid}" || "${pid}" == "${target_pid}" ]] && continue
+      echo "${pid}" >> "${tmp}"
+    done < "${PID_FILE}"
+  fi
+  if [[ -s "${tmp}" ]]; then
+    mv "${tmp}" "${PID_FILE}"
+  else
+    rm -f "${tmp}" "${PID_FILE}" "${META_FILE}"
+  fi
+}
+
 start_pf() {
   local label="$1"
   local port="$2"
@@ -185,8 +231,10 @@ start_pf() {
 
   if port_answers "${port}"; then
     if service_answers "${label}" "${port}"; then
+      if ! tunnel_meta_matches; then
+        die "${label}: port ${port} already serving, but for a different namespace/context. Run '--stop' first."
+      fi
       err "${label}: port ${port} already serving the expected API; reusing it."
-      err "${label}: run '--stop' first if that tunnel points at another namespace or context."
       return 0
     fi
     die "${label}: port ${port} is occupied, but its identity probe failed. Stop the other listener, or run '--stop' to tear down forwards from a previous run."
@@ -200,7 +248,13 @@ start_pf() {
   echo "${pid}" >> "${PID_FILE}"
   err "${label}: log ${log}"
 
-  wait_for_forward "${label}" "${pid}" "${port}" "${log}"
+  if wait_for_forward "${label}" "${pid}" "${port}" "${log}"; then
+    write_forward_meta
+    return 0
+  fi
+  kill "${pid}" 2>/dev/null || true
+  remove_pid "${pid}"
+  return 1
 }
 
 start_proxy() {
@@ -208,6 +262,9 @@ start_proxy() {
 
   if port_answers 8080; then
     if service_answers "kube-proxy" 8080; then
+      if ! tunnel_meta_matches; then
+        die "kube-proxy: port 8080 already serving, but for a different namespace/context. Run '--stop' first."
+      fi
       err "kube-proxy: port 8080 already serving the expected API; reusing it."
       return 0
     fi
@@ -222,7 +279,13 @@ start_proxy() {
   echo "${pid}" >> "${PID_FILE}"
   err "kube-proxy: log ${log}"
 
-  wait_for_forward "kube-proxy" "${pid}" 8080 "${log}"
+  if wait_for_forward "kube-proxy" "${pid}" 8080 "${log}"; then
+    write_forward_meta
+    return 0
+  fi
+  kill "${pid}" 2>/dev/null || true
+  remove_pid "${pid}"
+  return 1
 }
 
 main() {
@@ -309,6 +372,11 @@ main() {
   KUBECTL_CONTEXT_ARGS=()
   if [[ -n "${context}" ]]; then
     KUBECTL_CONTEXT_ARGS=(--context "${context}")
+  fi
+
+  EFFECTIVE_CONTEXT="${context:-${KUBE_CONTEXT:-}}"
+  if [[ -z "${EFFECTIVE_CONTEXT}" ]]; then
+    EFFECTIVE_CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
   fi
 
   if [[ -z "${any_flag}" ]]; then

@@ -201,6 +201,13 @@ def main() -> int:
         if not isinstance(payload, list):
             print("stdin JSON must be an object or array", file=sys.stderr)
             return 1
+        for i, alert in enumerate(payload):
+            if not isinstance(alert, dict):
+                print(
+                    f"stdin JSON element {i} must be an object, got {type(alert).__name__}",
+                    file=sys.stderr,
+                )
+                return 1
         result = {
             "distribution_root": str(dist_root) if dist_root else None,
             "catalog": str(catalog_path),

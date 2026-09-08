@@ -101,6 +101,14 @@ prom_query() {
   printf '%s\n' "${body}"
 }
 
+warn_alerts_instant_query() {
+  local query="$1"
+  if [[ "${query}" == *ALERTS* ]]; then
+    err "Warning: instant-querying ALERTS uses .value[0] as evaluation time, not alert start time."
+    err "Use --firing (GET /api/v1/alerts) for firing alerts with activeAt."
+  fi
+}
+
 summarize_firing() {
   local raw="$1"
   local as_json="${2:-}"
@@ -203,6 +211,7 @@ main() {
       prom_get "${prom_url}" "/api/v1/rules" "${insecure}" | jq .
       ;;
     --query)
+      warn_alerts_instant_query "${query}"
       raw="$(prom_query "${prom_url}" "${query}" "${insecure}")"
       jq . <<<"${raw}"
       ;;

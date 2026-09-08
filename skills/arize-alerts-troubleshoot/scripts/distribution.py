@@ -36,7 +36,14 @@ def _coerce_explicit_root(root: pathlib.Path) -> pathlib.Path:
     # catalog CSV is present. Env vars must still be the real unpack root.
     docs_csv = root / "troubleshooting" / "selfhosted-alerts-table.csv"
     if root.name == "docs" and docs_csv.is_file():
-        return root.parent
+        parent = root.parent
+        if not (parent / MARKER_ARIZE_SH).is_file():
+            raise SystemExit(
+                f"Not a valid Arize distribution root: {root}\n"
+                f"Found {CATALOG_REL} under docs/, but parent {parent} is "
+                f"missing {MARKER_ARIZE_SH}."
+            )
+        return parent
 
     raise SystemExit(
         f"Not a valid Arize distribution root (missing "

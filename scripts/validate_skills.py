@@ -109,6 +109,11 @@ def check_links(skill_dir, prose):
         if not path_part:
             continue
         resolved = os.path.normpath(os.path.join(skill_dir, path_part))
+        if os.path.relpath(resolved, skill_dir).startswith(".."):
+            errors.append(
+                f"link resolves outside skill directory: [...]({target})"
+            )
+            continue
         if not os.path.exists(resolved):
             errors.append(f"broken relative link: [...]({target}) -> missing '{path_part}'")
     return errors

@@ -264,11 +264,20 @@ def search_docs(
     hits: list[dict] = []
     q = query.lower()
     for path in _iter_doc_files(docs_root, path_filter):
+        suffix = path.suffix.lower()
         try:
-            raw = path.read_bytes()[:max_bytes].decode("utf-8", errors="replace")
+            data = path.read_bytes()
         except OSError:
             continue
-        suffix = path.suffix.lower()
+
+        # HTML/Markdown need the full file for verified anchors. Truncating
+        # before _best_section drops headings beyond the cutoff and breaks the
+        # citation contract. Plain CSV/TXT can stay bounded.
+        if suffix in _HTML_SUFFIXES or suffix == ".md":
+            raw = data.decode("utf-8", errors="replace")
+        else:
+            raw = data[:max_bytes].decode("utf-8", errors="replace")
+
         plain = _strip_html(raw) if suffix in _HTML_SUFFIXES else raw
         if q not in plain.lower() and q not in str(path).lower():
             continue
@@ -344,7 +353,7 @@ def main() -> int:
         "--max-bytes",
         type=int,
         default=2_000_000,
-        help="Max bytes to read per file",
+        help="Max bytes to read per CSV/TXT file (HTML/Markdown always read in full)",
     )
     parser.add_argument(
         "--list-docs",

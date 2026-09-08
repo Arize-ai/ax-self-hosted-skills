@@ -25,7 +25,7 @@ SAFE_KUBECTL="${SCRIPT_DIR}/safe-kubectl.sh"
 # Failures meaning "this shell cannot reach the API server" rather than
 # "credentials or namespace are wrong". Sandboxed agent shells hit these even
 # when the operator's own terminal works fine.
-readonly NETWORK_PATH_ERR_RE='Forbidden|no such host|i/o timeout|Timeout|deadline exceeded|connection refused|network is unreachable|no route to host|proxyconnect|dial tcp'
+readonly NETWORK_PATH_ERR_RE='no such host|i/o timeout|Timeout|deadline exceeded|connection refused|network is unreachable|no route to host|proxyconnect|dial tcp'
 
 die_usage() {
   err "$@"

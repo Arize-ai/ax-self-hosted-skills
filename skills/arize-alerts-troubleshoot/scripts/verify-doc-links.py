@@ -30,6 +30,7 @@ _MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(\s*([^)\s]+)\s*\)")
 _FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})[ \t]*([^\s`]*)", re.MULTILINE)
 _DOC_SUFFIXES = {".html", ".htm", ".md", ".csv", ".txt"}
 _HTML_SUFFIXES = {".html", ".htm"}
+_ANCHOR_SUFFIXES = {".html", ".htm", ".md"}
 
 
 def _load_docs_search():
@@ -136,18 +137,26 @@ def check_links(text: str, docs_search) -> list[str]:
             )
             continue
 
-        if file_path.suffix.lower() not in _HTML_SUFFIXES:
-            continue  # CSV/TXT have no anchors
+        suffix = file_path.suffix.lower()
+        if suffix not in _ANCHOR_SUFFIXES:
+            continue  # CSV/TXT: whole-file links only
 
         anchors = _anchors_for(file_path, docs_search)
-        if not anchors:
-            continue
 
         if not fragment:
+            if anchors:
+                problems.append(
+                    f"[{label}] no #anchor -> {target}\n"
+                    f"    this lands at the top of the page; "
+                    f"pick a section with: docs-search.py --list-sections "
+                    f"{file_path} --format markdown"
+                )
+            continue
+
+        if not anchors:
             problems.append(
-                f"[{label}] no #anchor -> {target}\n"
-                f"    this lands at the top of the page; "
-                f"pick a section with: docs-search.py --list-sections "
+                f"[{label}] could not parse anchors in {file_path}\n"
+                f"    cannot verify #{fragment}; re-run docs-search.py --list-sections "
                 f"{file_path} --format markdown"
             )
         elif fragment not in anchors:

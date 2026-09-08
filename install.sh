@@ -15,7 +15,7 @@ PROJECT_DIR=""
 MANUAL_AGENTS=()
 SELECTED_SKILLS=()
 
-usage() {
+show_usage() {
   cat <<'USAGE'
 Arize Self-Hosted Skills Installer
 
@@ -49,7 +49,16 @@ Examples:
   ./install.sh --project ~/my-app --copy
   ./install.sh --project ~/my-app --uninstall
 USAGE
+}
+
+usage() {
+  show_usage
   exit 0
+}
+
+die_usage() {
+  show_usage
+  exit 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -65,7 +74,7 @@ while [[ $# -gt 0 ]]; do
     --uninstall)  UNINSTALL=true; shift ;;
     --list)       LIST=true; shift ;;
     --help|-h)    usage ;;
-    *)            echo "Unknown flag: $1"; usage ;;
+    *)            echo "Unknown flag: $1" >&2; die_usage ;;
   esac
 done
 
@@ -139,9 +148,9 @@ detect_agents() {
 }
 
 if [[ "$GLOBAL" != true && -z "$PROJECT_DIR" ]]; then
-  echo "Error: --project <dir> is required (or use --global for global install)."
-  echo ""
-  usage
+  echo "Error: --project <dir> is required (or use --global for global install)." >&2
+  echo "" >&2
+  die_usage
 fi
 
 if [[ ${#MANUAL_AGENTS[@]} -gt 0 ]]; then

@@ -65,6 +65,13 @@ EOF
   exit 1
 }
 
+# Long flags blocked for port-forward/proxy — binding beyond localhost.
+readonly -a DENIED_LONG_FLAGS=(
+  --address
+  --accept-hosts
+  --bind-address
+)
+
 is_value_flag() {
   local arg="$1" flag
   for flag in "${VALUE_FLAGS[@]}"; do
@@ -78,6 +85,22 @@ is_boolean_long_flag() {
   for flag in "${BOOLEAN_LONG_FLAGS[@]}"; do
     [[ "${arg}" == "${flag}" ]] && return 0
   done
+  return 1
+}
+
+is_denied_long_flag() {
+  local arg="$1" flag
+  for flag in "${DENIED_LONG_FLAGS[@]}"; do
+    [[ "${arg}" == "${flag}" ]] && return 0
+  done
+  return 1
+}
+
+is_allowed_long_flag() {
+  local arg="$1"
+  is_denied_long_flag "${arg}" && return 1
+  is_value_flag "${arg}" && return 0
+  is_boolean_long_flag "${arg}" && return 0
   return 1
 }
 
@@ -97,10 +120,20 @@ find_verb() {
     fi
 
     if [[ "${arg}" == --*=* ]]; then
+      local flag_name="${arg%%=*}"
+      if is_denied_long_flag "${flag_name}"; then
+        die "Flag '${flag_name}' is not allowed — it can bind tunnels beyond localhost."
+      fi
+      if ! is_allowed_long_flag "${flag_name}"; then
+        die "Unsupported flag '${flag_name}'."
+      fi
       continue
     fi
 
     if [[ "${arg}" == --* ]]; then
+      if is_denied_long_flag "${arg}"; then
+        die "Flag '${arg}' is not allowed — it can bind tunnels beyond localhost."
+      fi
       if is_boolean_long_flag "${arg}"; then
         continue
       fi
