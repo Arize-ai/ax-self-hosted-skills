@@ -33,6 +33,7 @@ $SKILL_ROOT/                       # this skill (directory containing SKILL.md)
   scripts/preflight.sh             # tools + distribution + kube + version gate
   scripts/open-ports.sh
   scripts/check-version.sh
+  scripts/check-hub-jwt.py         # hubJwt/pull-secret whitespace-corruption check
   scripts/prom-alerts.sh
   scripts/am-query.sh
   scripts/catalog-lookup.py
@@ -137,6 +138,7 @@ those filters.
 | `preflight.sh` | Gate: tools, distribution root, kube context confirmation, API reachability, `onprem-metadata`, version match |
 | `open-ports.sh` | Background port-forwards for Prometheus / Alertmanager |
 | `check-version.sh` | Compare chart `appVersion` to `onprem-metadata` `last-applied-release` |
+| `check-hub-jwt.py` | Detect whitespace corruption in `hubJwt` / the `hub-json-key` pull secret (401 against the image hub) |
 | `prom-alerts.sh` | List firing alerts from Prometheus |
 | `am-query.sh` | Query Alertmanager v2 API |
 | `catalog-lookup.py` | Join alertname/component → distribution CSV |
@@ -171,6 +173,36 @@ those filters.
 
 Exit 5 is a **tooling** failure: re-run with unrestricted network access before
 reporting VPN, credential, namespace, or cluster-health problems.
+
+### `check-hub-jwt.py`
+
+```bash
+python3 "$SKILL_ROOT/scripts/check-hub-jwt.py" \
+  --distribution-root "$ARIZE_DISTRIBUTION_ROOT" \
+  --operator-namespace "$OPERATOR_NS"
+```
+
+Checks up to two sources for a corrupted hub license credential: local
+`values.yaml` `hubJwt` (if a distribution root is available) and the
+cluster's `hub-json-key`-style `dockerconfigjson` pull secret (`--secret-name`
+to override, `--registry` to override the default `ch.hub.arize.com`). Each
+source is base64-decoded and checked for embedded/trailing whitespace —
+the signature of `echo` (no `-n`) or a missing `tr -d '\n'` in the seeding
+pipeline. Never prints the JWT, secret, or any decoded credential bytes —
+only whitespace byte offsets/counts and structural facts (segment count,
+length).
+
+Run this whenever a pod is `ImagePullBackOff`/`ErrImagePull` against the hub
+registry and the kubelet event shows `401 Unauthorized` on the OAuth token
+fetch. A payload segment that still decodes as valid JSON with plausible
+`iat`/`exp` claims is **not** evidence the credential is intact — that check
+alone missed this exact bug once already, because a trailing-newline defect
+in the encoded credential doesn't touch the payload segment. Only a
+byte-level check on the fully decoded credential (what this script does)
+catches it.
+
+Exit codes: `0` all checked sources clean, `1` contamination found, `2` usage,
+`3` no source could be checked (access problem, not a finding).
 
 ### `prom-alerts.sh`
 

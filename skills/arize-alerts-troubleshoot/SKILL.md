@@ -172,6 +172,54 @@ it is missing, read ConfigMap `arizeapp` in the operator namespace:
 Do not search the filesystem for alternate values files. If both sources are
 unavailable, ask the user. Details: [distribution guide](references/distribution.md).
 
+### Bring-up blockers before Prometheus exists
+
+Before opening port-forwards, confirm something is actually running to query.
+If the `arize` namespace has no pods, or the operator pod itself is not
+`Running`, there are no firing alerts to pull yet — that is not a clean bill
+of health, it means nothing has deployed:
+
+```bash
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$OPERATOR_NS" get pods
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$ARIZE_NAMESPACE" get pods
+```
+
+**`ImagePullBackOff` / `ErrImagePull`, especially against the Arize image hub
+(`ch.hub.arize.com` or another configured hub host):** `describe` the pod for
+the exact kubelet error. A `401 Unauthorized` from the hub's OAuth token
+endpoint is a `hubJwt` encoding or entitlement problem, not a Prometheus
+alert. **Check encoding integrity before escalating to Arize about the
+license:**
+
+```bash
+python3 "$SKILL_ROOT/scripts/check-hub-jwt.py" \
+  ${ARIZE_DISTRIBUTION_ROOT:+--distribution-root "$ARIZE_DISTRIBUTION_ROOT"} \
+  --operator-namespace "$OPERATOR_NS"
+```
+
+This decodes the `hubJwt` (local `values.yaml`) and/or the cluster's
+`hub-json-key` pull secret and reports whether the decoded credential
+contains stray whitespace. The most common cause is the seeding pipeline
+using `echo` instead of `echo -n`, or dropping `tr -d '\n'` on the base64
+output, which embeds a trailing or mid-string newline in the JWT — see the
+"Seed hubJwt (license JWT)" step in your cloud's detailed install walkthrough
+(`docs-search.py --query "seed hubJwt license JWT"` for the citation).
+
+A JWT with this defect passes a naive check: it is valid base64, and its
+payload segment still parses as JSON with plausible-looking claims (`iat`,
+`exp`). **Decoding the payload and seeing valid-looking claims is not
+evidence the credential is intact** — the payload segment is untouched by a
+trailing-newline bug; only the byte-for-byte credential (or the signature
+segment) shows it. Always run `check-hub-jwt.py`, or manually check the fully
+decoded credential for whitespace, before concluding this is a
+licensing/entitlement issue and asking the user to chase that with Arize. The
+script never prints the JWT or any decoded credential bytes — only whitespace
+positions and byte counts.
+
+If contamination is found, fix `values.yaml` per the seed-hubJwt doc and
+re-run the install/upgrade (a write action outside this skill's scope) so the
+pull secret regenerates.
+
 ### 2. Open ports (API-first)
 
 ```bash
