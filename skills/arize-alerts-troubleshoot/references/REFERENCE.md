@@ -33,7 +33,7 @@ $SKILL_ROOT/                       # this skill (directory containing SKILL.md)
   scripts/preflight.sh             # tools + distribution + kube + version gate
   scripts/open-ports.sh
   scripts/check-version.sh
-  scripts/check-hub-jwt.py         # hubJwt/pull-secret whitespace-corruption check
+  scripts/check-secret-encoding.py # hubJwt/postgresPassword/cipherKey whitespace check
   scripts/prom-alerts.sh
   scripts/am-query.sh
   scripts/catalog-lookup.py
@@ -138,7 +138,7 @@ those filters.
 | `preflight.sh` | Gate: tools, distribution root, kube context confirmation, API reachability, `onprem-metadata`, version match |
 | `open-ports.sh` | Background port-forwards for Prometheus / Alertmanager |
 | `check-version.sh` | Compare chart `appVersion` to `onprem-metadata` `last-applied-release` |
-| `check-hub-jwt.py` | Detect whitespace corruption in `hubJwt` / the `hub-json-key` pull secret (401 against the image hub) |
+| `check-secret-encoding.py` | Detect whitespace corruption in hubJwt/postgresPassword/cipherKey and the hub-json-key pull secret |
 | `prom-alerts.sh` | List firing alerts from Prometheus |
 | `am-query.sh` | Query Alertmanager v2 API |
 | `catalog-lookup.py` | Join alertname/component → distribution CSV |
@@ -174,35 +174,57 @@ those filters.
 Exit 5 is a **tooling** failure: re-run with unrestricted network access before
 reporting VPN, credential, namespace, or cluster-health problems.
 
-### `check-hub-jwt.py`
+### `check-secret-encoding.py`
 
 ```bash
-python3 "$SKILL_ROOT/scripts/check-hub-jwt.py" \
+python3 "$SKILL_ROOT/scripts/check-secret-encoding.py" \
   --distribution-root "$ARIZE_DISTRIBUTION_ROOT" \
   --operator-namespace "$OPERATOR_NS"
 ```
 
-Checks up to two sources for a corrupted hub license credential: local
-`values.yaml` `hubJwt` (if a distribution root is available) and the
-cluster's `hub-json-key`-style `dockerconfigjson` pull secret (`--secret-name`
-to override, `--registry` to override the default `ch.hub.arize.com`). Each
-source is base64-decoded and checked for embedded/trailing whitespace —
-the signature of `echo` (no `-n`) or a missing `tr -d '\n'` in the seeding
-pipeline. Never prints the JWT, secret, or any decoded credential bytes —
-only whitespace byte offsets/counts and structural facts (segment count,
-length).
+Checks `hubJwt`, `postgresPassword`, and `cipherKey` (`--field` to override
+the list, repeatable) against every available source: local `values.yaml`
+(if a distribution root is available), the cluster's consolidated
+`arize-secrets` secret (`--secret-name` to override — each values.yaml field
+name is also a Secret data key there), and for `hubJwt` only, the derived
+`hub-json-key`-style `dockerconfigjson` pull secret (`--pull-secret-name`,
+`--registry` to override the default `ch.hub.arize.com`) — that is the
+credential actually presented to the registry and can drift from
+`arize-secrets` if a pull secret wasn't regenerated after an update. Each
+source is base64-decoded and checked for embedded/trailing whitespace — the
+signature of `echo` (no `-n`) or a missing `tr -d '\n'` in the seeding
+pipeline. Never prints the JWT, password, key, or any decoded credential
+bytes — only whitespace byte offsets/counts and structural facts (segment
+count, length).
 
 Run this whenever a pod is `ImagePullBackOff`/`ErrImagePull` against the hub
 registry and the kubelet event shows `401 Unauthorized` on the OAuth token
-fetch. A payload segment that still decodes as valid JSON with plausible
+fetch. A JWT payload segment that still decodes as valid JSON with plausible
 `iat`/`exp` claims is **not** evidence the credential is intact — that check
 alone missed this exact bug once already, because a trailing-newline defect
 in the encoded credential doesn't touch the payload segment. Only a
 byte-level check on the fully decoded credential (what this script does)
 catches it.
 
-Exit codes: `0` all checked sources clean, `1` contamination found, `2` usage,
-`3` no source could be checked (access problem, not a finding).
+**`cipherKey` gets a lower-confidence check, and that distinction matters.**
+`hubJwt` and `postgresPassword` are guaranteed printable text by their
+documented generation methods, so any whitespace byte found is unambiguous
+corruption. `cipherKey` may legitimately be raw random binary (the docs'
+example is alphanumeric text, but say "adjust to your security process"),
+and raw binary can contain a whitespace-range byte purely by chance. The
+actual bug this script hunts for has one unmistakable signature regardless
+of field — exactly one stray LF, as the very last byte — so that pattern is
+always reported high-confidence; anything else found in a field listed in
+`BINARY_CAPABLE_FIELDS` (currently just `cipherKey`) is reported
+low-confidence instead. **Do not recommend re-seeding or rotating a
+low-confidence `cipherKey` finding** — confirm with whoever generated it
+whether it's raw binary first. Rotating a working `cipherKey` can make data
+already encrypted under it unreadable.
+
+Exit codes: `0` all checked sources clean, `1` high-confidence contamination
+found, `2` usage, `3` no source could be checked (access problem, not a
+finding), `4` only a low-confidence pattern found in a binary-capable field —
+plausible false positive, confirm generation method before acting.
 
 ### `prom-alerts.sh`
 

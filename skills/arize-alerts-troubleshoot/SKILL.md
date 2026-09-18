@@ -192,33 +192,50 @@ alert. **Check encoding integrity before escalating to Arize about the
 license:**
 
 ```bash
-python3 "$SKILL_ROOT/scripts/check-hub-jwt.py" \
+python3 "$SKILL_ROOT/scripts/check-secret-encoding.py" \
   ${ARIZE_DISTRIBUTION_ROOT:+--distribution-root "$ARIZE_DISTRIBUTION_ROOT"} \
   --operator-namespace "$OPERATOR_NS"
 ```
 
-This decodes the `hubJwt` (local `values.yaml`) and/or the cluster's
-`hub-json-key` pull secret and reports whether the decoded credential
-contains stray whitespace. The most common cause is the seeding pipeline
-using `echo` instead of `echo -n`, or dropping `tr -d '\n'` on the base64
-output, which embeds a trailing or mid-string newline in the JWT — see the
-"Seed hubJwt (license JWT)" step in your cloud's detailed install walkthrough
-(`docs-search.py --query "seed hubJwt license JWT"` for the citation).
+This decodes `hubJwt`, `postgresPassword`, and `cipherKey` from local
+`values.yaml` and the cluster's `arize-secrets`/`hub-json-key` secrets, and
+reports whether each decoded credential contains stray whitespace. The most
+common cause is the seeding pipeline using `echo` instead of `echo -n`, or
+dropping `tr -d '\n'` on the base64 output, which embeds a trailing or
+mid-string newline in the value — see the "Seed hubJwt (license JWT)" /
+"Set postgresPassword and cipherKey" steps in your cloud's detailed install
+walkthrough (`docs-search.py --query "seed hubJwt license JWT"` for the
+citation).
 
 A JWT with this defect passes a naive check: it is valid base64, and its
 payload segment still parses as JSON with plausible-looking claims (`iat`,
 `exp`). **Decoding the payload and seeing valid-looking claims is not
 evidence the credential is intact** — the payload segment is untouched by a
 trailing-newline bug; only the byte-for-byte credential (or the signature
-segment) shows it. Always run `check-hub-jwt.py`, or manually check the fully
-decoded credential for whitespace, before concluding this is a
+segment) shows it. Always run `check-secret-encoding.py`, or manually check
+the fully decoded credential for whitespace, before concluding a hub 401 is a
 licensing/entitlement issue and asking the user to chase that with Arize. The
-script never prints the JWT or any decoded credential bytes — only whitespace
-positions and byte counts.
+script never prints any secret, JWT, or decoded credential bytes — only
+whitespace positions and byte counts.
 
-If contamination is found, fix `values.yaml` per the seed-hubJwt doc and
-re-run the install/upgrade (a write action outside this skill's scope) so the
-pull secret regenerates.
+**`cipherKey` findings need an extra step before you act on them.**
+`hubJwt` and `postgresPassword` are guaranteed printable text by their
+documented generation methods, so any whitespace byte in either is
+unambiguous corruption (exit `1`). `cipherKey` may legitimately be raw random
+binary instead of the doc's alphanumeric-source example, and raw binary can
+contain a whitespace-range byte purely by chance — indistinguishable from
+real corruption unless it also matches the bug's exact signature (a single
+stray LF as the very last byte). A `cipherKey` hit that doesn't match that
+signature comes back as exit `4`, low-confidence, and the script's own output
+says not to act on it alone. **Do not tell the user to re-seed or rotate
+`cipherKey` on a low-confidence finding** — ask whether it was generated as
+raw binary first. Rotating a working `cipherKey` can make data already
+encrypted under it unreadable, which is a much worse outcome than a false
+alarm.
+
+If a high-confidence finding is confirmed, fix `values.yaml` per the relevant
+seed doc and re-run the install/upgrade (a write action outside this skill's
+scope) so the affected secret regenerates.
 
 ### 2. Open ports (API-first)
 
