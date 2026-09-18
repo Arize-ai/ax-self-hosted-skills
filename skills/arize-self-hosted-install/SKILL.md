@@ -42,6 +42,10 @@ chart, offline documentation, examples, and optional Terraform modules.
   that it replaces matching local port-forward processes and confirm first.
 - Keep secrets out of chat and shell history. Treat `values.yaml` as sensitive,
   mode `600`, and keep it out of source control.
+- For distribution access, check only whether `JWT` is already exported and
+  non-empty; never print its value or start an interactive credential prompt.
+  If it is missing, stop and ask the user to export it privately in the same
+  shell before continuing.
 - The selected distribution's offline docs and chart schema override public
   guidance. Never invent release fields, defaults, paths, or commands.
 

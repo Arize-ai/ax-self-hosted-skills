@@ -113,6 +113,24 @@ The credential is a JWT issued by Arize AI. The user may call it a license key.
 If they do not have one, they must contact their Arize representative. Do not
 accept it in chat.
 
+Before any download preparation, check only whether `JWT` is already exported
+and non-empty:
+
+```bash
+if [[ -n "${JWT:-}" ]]; then
+  printf 'JWT is exported.\n'
+else
+  printf 'JWT is not exported.\n'
+fi
+```
+
+Never run `env`, `printenv JWT`, `echo "$JWT"`, or another command that reveals
+the value. Never open an interactive `read` prompt for the credential. If the
+check reports that it is missing, stop and ask the user to export `JWT`
+privately in the same shell using their approved secret-handling process, then
+tell you when it is ready. Do not provide or run a command containing the
+literal key, and do not continue until the presence check succeeds.
+
 Before creating a directory or downloading anything:
 
 1. Open the [On-Premise Releases](https://arize.com/docs/ax/selfhosting/on-premise-releases)
@@ -139,15 +157,15 @@ directory. Ask them to confirm that this parent directory and generated
 subdirectory are acceptable before running:
 
 ```bash
-IFS= read -rsp 'Arize distribution JWT: ' JWT && export JWT && echo
+: "${JWT:?JWT is not exported; stop and ask the user to set it privately}"
 curl -H "Authorization: Bearer $JWT" \
   "https://ch.hub.arize.com/dist/get_latest.sh" | sh -
 unset JWT
 ```
 
-The prompt keeps the JWT out of chat, terminal output, and shell history. After
-download, use the actual directory created by the script, not a predicted
-version path.
+The command consumes the previously exported value without displaying it and
+then removes it from the shell. After download, use the actual directory
+created by the script, not a predicted version path.
 
 #### Download a specific older release
 
@@ -157,10 +175,11 @@ tarball into the confirmed download directory:
 ```bash
 VERSION=x.y.z
 URL=https://ch.hub.arize.com/dist
-IFS= read -rsp 'Arize distribution JWT: ' JWT && export JWT && echo
+: "${JWT:?JWT is not exported; stop and ask the user to set it privately}"
 curl -H "Authorization: Bearer $JWT" \
   "$URL/distributions/arize-distribution-$VERSION.tar" \
   --output "arize-distribution-$VERSION.tar"
+unset JWT
 ```
 
 The versioned tarball has no enclosing top-level directory. Require a dedicated
@@ -181,7 +200,6 @@ mv "<confirmed-download-directory>/arize-distribution-$VERSION.tar" \
   "$EXTRACT_DIR/"
 cd "$EXTRACT_DIR"
 tar -xvf "./arize-distribution-$VERSION.tar"
-unset JWT
 ```
 
 If the chosen extraction directory already exists, stop and verify with the
@@ -486,19 +504,37 @@ offline release docs, and chart schema.
 
 ### Secret handling
 
-Have the user create secret values outside chat. The general encoding shape is:
+Have the user create secret values outside chat. When `values.yaml` contains
+the placeholders `<HUB_JWT_BASE64>`, `<POSTGRES_PASSWORD_BASE64>`, and
+`<CIPHER_KEY_BASE64>`, explain each mapping and include these commands for the
+user to run locally:
 
 ```bash
-printf '%s' '<plain-text-value>' | base64 | tr -d '\n'
+# <HUB_JWT_BASE64>: base64 of the raw Arize JWT
+printf '%s' "$JWT" | base64 | tr -d '\n'; printf '\n'
+
+# <POSTGRES_PASSWORD_BASE64>: base64 of the database password
+printf '%s' "$POSTGRES_PASSWORD" | base64 | tr -d '\n'; printf '\n'
+
+# <CIPHER_KEY_BASE64>: base64 of a random 32-character cipher source
+cat /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 32 | base64
 ```
 
-Do not put real values into that literal command in agent-visible output. Do
-not assume that every field is encoded: bucket names, organization names,
+The cipher command is the command documented in the distribution's offline
+Helm guide. `JWT` and `POSTGRES_PASSWORD` must already be set privately in the
+user's shell; if either is missing, stop and ask the user to export it using
+their approved secret-handling process. Do not substitute literal secrets into
+the commands, run the commands for the user, capture their output, or ask the
+user to paste the results into chat. The generated base64 strings remain
+secret values and must be inserted into `values.yaml` locally.
+
+Do not assume that every field is encoded: bucket names, organization names,
 service-account emails, registry hosts, and URLs are normally plain text. The
 release schema and platform walkthrough decide each field.
 
 Create a structurally complete file with clearly named placeholders, then have
-the user replace secret placeholders through their approved process. Check for
+the user replace secret placeholders through their approved process. Tell them
+to reply `ready` only after all three values are saved. Then check for
 unresolved placeholders without displaying surrounding values:
 
 ```bash
