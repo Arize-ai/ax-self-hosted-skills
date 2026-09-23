@@ -10,7 +10,7 @@ Options:
 Exit codes:
     0  no errors (warnings may still be printed)
     1  at least one error
-    2  usage
+    2  usage error, missing folder, or no .md/.mdx files found
     3  could not fetch the sitemap (usually a network restriction)
 """
 import re, sys, os, concurrent.futures as cf, urllib.request, urllib.error
@@ -63,9 +63,10 @@ def resolve_local(docs_dir, src_file, target):
 
 def scan_source(docs_dir, external):
     findings, remote = [], {}
-    for root, _, files in os.walk(docs_dir):
-        if "node_modules" in root or "/." in root:
-            continue
+    for root, dirs, files in os.walk(docs_dir):
+        # Skip hidden folders and node_modules below the scan root only, so a
+        # scan root that itself sits under a dot folder still works.
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
         for fn in files:
             if not fn.endswith((".md", ".mdx")):
                 continue
@@ -166,8 +167,18 @@ if __name__ == "__main__":
     if len(args) < 2 or args[0] not in ("source", "live"):
         print(__doc__); sys.exit(2)
     if args[0] == "source":
-        f = scan_source(args[1], external)
-        n = sum(1 for r, _, fs in os.walk(args[1]) for x in fs if x.endswith((".md", ".mdx")))
+        docs_dir = os.path.expanduser(args[1])
+        if not os.path.isdir(docs_dir):
+            print(f"Not a directory: {docs_dir}\nCheck the path. Use the folder that holds the .md/.mdx files.")
+            sys.exit(2)
+        n = 0
+        for root, dirs, fs in os.walk(docs_dir):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
+            n += sum(1 for x in fs if x.endswith((".md", ".mdx")))
+        if n == 0:
+            print(f"No .md or .mdx files found under {docs_dir}.\nCheck the path, or point at the docs folder itself.")
+            sys.exit(2)
+        f = scan_source(docs_dir, external)
         sys.exit(report(f, f"{n} files"))
     f, n = scan_live(args[1], args[2] if len(args) > 2 else "", external)
     sys.exit(report(f, f"{n} pages"))
