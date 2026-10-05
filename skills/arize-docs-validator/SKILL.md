@@ -2,9 +2,10 @@
 name: arize-docs-validator
 description: >-
   Validates Arize AX self-hosting documentation for broken images, broken
-  internal and external links, and text that promises a diagram with no image
-  after it. Use when checking docs before or after a publish, when a reader
-  reports an image or link not working, or when auditing a docs section.
+  internal and external links, text that promises a diagram with no image
+  after it, and pages missing from the docs.json left nav. Use when checking
+  docs before or after a publish, when a reader reports an image or link not
+  working or a page that is hard to find, or when auditing a docs section.
 metadata:
   author: arize
   version: "1.0"
@@ -16,7 +17,8 @@ compatibility: >-
 # Arize Docs Validator Skill
 
 Checks that docs render as expected: every image loads, every link resolves,
-and no page promises a diagram that is missing.
+no page promises a diagram that is missing, and every page has a left-nav
+entry.
 
 ## When to use
 
@@ -30,7 +32,7 @@ and no page promises a diagram that is missing.
 
 | Mode | Input | Best for |
 |---|---|---|
-| `source` | A folder of `.md` / `.mdx` files | Catching problems before they ship. Resolves local image paths and internal links against files on disk and HTTP checks remote URLs. |
+| `source` | A folder of `.md` / `.mdx` files | Catching problems before they ship. Resolves local image paths and internal links against files on disk, HTTP checks remote URLs, and flags pages missing from the nearest `docs.json` navigation. |
 | `live` | A sitemap URL, such as `https://arize.com/docs/sitemap.xml`, plus an optional path prefix | Checking what readers actually see, including CDN and storage bucket issues. |
 
 If the user does not say, use `source` when a docs folder is available,
@@ -64,5 +66,9 @@ finding usually means and how to fix it.
 - `live` mode parses server rendered HTML. Content that only appears after
   client side JavaScript runs can be missed. For those pages, check in a
   browser: an `<img>` whose `naturalWidth` is `0` after load failed.
+- The navigation check only runs in `source` mode, and only when a Mintlify
+  `docs.json` sits in the scanned folder or a folder above it. Point
+  `source` at a folder inside the docs repo, such as `ax/selfhosting`. It
+  skips `snippets/` folders and repo files such as `README.md`.
 - The "diagram below" check is a heuristic. It looks six lines ahead for an
   image or Mermaid block and can flag intentional wording.

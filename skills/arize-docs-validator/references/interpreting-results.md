@@ -17,6 +17,7 @@
 | Finding | Usual cause | Fix |
 |---|---|---|
 | `text promises a diagram/image but none follows` | The image line was dropped, often while moving content into a snippet or shared include. | Restore the image, or reword the sentence. |
+| `page is not in docs.json navigation` | The page was added (or synced from the MkDocs distribution docs) without an entry in `docs.json` in `Arize-ai/docs`. The page still has a URL, but readers can only reach it through inbound links or search. | Add the route to the matching group in `docs.json`. If the page is deliberately hidden or superseded, remove it or add a redirect instead. |
 | `image has no alt text` | `![](url)` with empty brackets. | Add short descriptive alt text. Low priority. |
 
 ## Example

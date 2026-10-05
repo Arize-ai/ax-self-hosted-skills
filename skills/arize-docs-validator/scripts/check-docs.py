@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Basic docs validation: broken images, broken links, orphaned "diagram below" intros.
+"""Basic docs validation: broken images, broken links, orphaned "diagram below" intros,
+and (source mode) pages missing from the Mintlify docs.json navigation.
 
 Usage:
   python3 check-docs.py source <docs_dir>            # scan .md/.mdx source files
@@ -13,7 +14,7 @@ Exit codes:
     2  usage error, missing folder, or no .md/.mdx files found
     3  could not fetch the sitemap (usually a network restriction)
 """
-import re, sys, os, concurrent.futures as cf, urllib.request, urllib.error
+import re, sys, os, json, concurrent.futures as cf, urllib.request, urllib.error
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
@@ -61,8 +62,59 @@ def resolve_local(docs_dir, src_file, target):
         tries += [c, c + ".md", c + ".mdx", os.path.join(c, "index.mdx")]
     return any(os.path.exists(t) for t in tries)
 
+NAV_SKIP_DIRS = {"snippets"}
+NAV_SKIP_FILES = {"README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"}
+
+def find_nav(docs_dir):
+    """Return the nearest docs.json with a navigation key, at or above docs_dir."""
+    d = os.path.abspath(docs_dir)
+    while True:
+        p = os.path.join(d, "docs.json")
+        if os.path.isfile(p):
+            try:
+                if "navigation" in json.load(open(p, encoding="utf-8")):
+                    return p
+            except ValueError:
+                pass
+        if os.path.dirname(d) == d:
+            return None
+        d = os.path.dirname(d)
+
+def nav_routes(nav_file):
+    routes = set()
+    def walk(node):
+        if isinstance(node, dict):
+            if isinstance(node.get("root"), str):
+                routes.add(node["root"])
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                if isinstance(v, str):
+                    routes.add(v)
+                else:
+                    walk(v)
+    walk(json.load(open(nav_file, encoding="utf-8"))["navigation"])
+    return {re.sub(r"(^|/)index$", "", r.strip("/")) for r in routes}
+
+def check_nav(docs_dir, md_files):
+    """Warn about pages that have a URL but no left-nav entry in docs.json."""
+    nav_file = find_nav(docs_dir)
+    if not nav_file:
+        return []
+    root, routes = os.path.dirname(nav_file), nav_routes(nav_file)
+    findings = []
+    for fp in md_files:
+        rel = os.path.relpath(fp, root).replace(os.sep, "/")
+        if os.path.basename(fp) in NAV_SKIP_FILES or NAV_SKIP_DIRS & set(rel.split("/")[:-1]):
+            continue
+        route = re.sub(r"(^|/)index$", "", os.path.splitext(rel)[0])
+        if route not in routes:
+            findings.append((fp, 0, "warn", "page is not in docs.json navigation (no left-nav entry)", route))
+    return findings
+
 def scan_source(docs_dir, external):
-    findings, remote = [], {}
+    findings, remote, md_files = [], {}, []
     for root, dirs, files in os.walk(docs_dir):
         # Skip hidden folders and node_modules below the scan root only, so a
         # scan root that itself sits under a dot folder still works.
@@ -71,6 +123,7 @@ def scan_source(docs_dir, external):
             if not fn.endswith((".md", ".mdx")):
                 continue
             fp = os.path.join(root, fn)
+            md_files.append(fp)
             lines = open(fp, encoding="utf-8", errors="replace").read().splitlines()
             in_code = False
             for n, line in enumerate(lines, 1):
@@ -105,7 +158,7 @@ def scan_source(docs_dir, external):
         if not ok(s):
             for fp, n, kind in remote[u]:
                 findings.append((fp, n, "error", f"broken remote {kind} (HTTP {s})", u))
-    return findings
+    return findings + check_nav(docs_dir, md_files)
 
 class Collector(HTMLParser):
     def __init__(self):
