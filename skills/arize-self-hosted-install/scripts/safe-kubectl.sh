@@ -29,13 +29,15 @@ Allowed kubectl operations:
   explain, version, auth whoami, auth can-i, rollout status, port-forward
 
 Mutating operations such as apply, create, delete, edit, patch, replace, scale,
-rollout restart, exec, and cp are rejected. Port-forwards bind to 127.0.0.1.
+rollout restart, exec, and cp are rejected. Reading Secret objects is rejected.
+Port-forwards bind to 127.0.0.1.
 EOF
   exit 1
 }
 
 readonly ALLOWED_VERBS_RE='^(get|describe|logs|top|wait|cluster-info|api-resources|api-versions|explain|version|auth|rollout|port-forward)$'
 readonly CLUSTER_RESOURCES_RE='^(node|nodes|no|storageclass|storageclasses|sc|namespace|namespaces|ns|persistentvolume|persistentvolumes|pv|customresourcedefinition|customresourcedefinitions|crd|crds)$'
+readonly SECRET_RESOURCES_RE='^(secret|secrets)$'
 
 # Flags whose next argument is a value. This is used only to identify the verb
 # and resource; kubectl remains responsible for full flag validation.
@@ -133,6 +135,23 @@ scan_positionals() {
   done
 }
 
+reject_secret_reads() {
+  local item base
+  local -a resources=()
+  case "${VERB}" in
+    get|describe) ;;
+    *) return ;;
+  esac
+  [[ -n "${SUBJECT}" ]] || return
+  IFS=',' read -r -a resources <<< "${SUBJECT}"
+  for item in "${resources[@]}"; do
+    base="${item%%/*}"
+    if [[ "${base}" =~ ${SECRET_RESOURCES_RE} ]]; then
+      die "Reading Secret objects is not allowed."
+    fi
+  done
+}
+
 require_namespace_for_namespaced_operation() {
   local resource base
   case "${VERB}" in
@@ -220,6 +239,7 @@ main() {
     die "Set KUBE_CONTEXT to the exact user-confirmed context before contacting the API."
   fi
 
+  reject_secret_reads
   require_namespace_for_namespaced_operation "$@"
 
   local extra=() tunnel_safety=()

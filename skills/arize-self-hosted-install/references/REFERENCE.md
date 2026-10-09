@@ -438,7 +438,8 @@ values while inspecting `values.yaml`.
 
 Confirm each key exists in the release schema before using it:
 
-- `hubJwt`: Arize distribution/runtime JWT, base64-encoded.
+- `hubJwt`: Arize distribution/runtime JWT, base64-encoded. Omit it when the
+  user chooses a super secret.
 - `clusterName`: exact platform-specific cluster identifier.
 - `cloud`: the chart schema allows `gcp`, `aws`, `azure`, `oci`, `minio`, and
   `ceph`. Use `gcp`, `aws`, or `azure` for those hyperscalers. IBM,
@@ -446,7 +447,9 @@ Confirm each key exists in the release schema before using it:
   Use `oci` or `minio` only when the matching release documentation applies.
 - `gazetteBucket` and `druidBucket`: plain bucket/container names.
 - `postgresPassword` and `cipherKey`: generated and base64-encoded according to
-  the release schema.
+  the release schema. Omit both when the user chooses a super secret.
+- `secretCreation`: secret name for the super-secret path. Leave it unset on
+  the placeholder path. Confirm the field in the release schema before use.
 - `organizationName`: plain organization name.
 - `clusterSizing`: exact value approved by Arize AI and matched to capacity.
 - `appBaseUrl`: final user-facing HTTPS URL.
@@ -504,10 +507,191 @@ offline release docs, and chart schema.
 
 ### Secret handling
 
+Before writing any sensitive field, ask the user to choose one option:
+
+1. **Super secret.** A Kubernetes Secret in the operator namespace holds the
+   sensitive values. `values.yaml` contains `secretCreation: "<secret-name>"`
+   and does not contain those values. This is the path to use when the agent
+   must not be able to read storage keys or other secrets from the file.
+2. **Placeholders.** The agent writes `values.yaml` with secret placeholders,
+   and the user replaces them locally. This is the current path.
+
+Do not choose for the user. Confirm `secretCreation` in the selected release
+schema before offering option 1.
+
+#### Option 1: super secret
+
+Agree on a secret name, suggesting `arize-super-secret`, and use the configured
+namespaces. The release defaults are `arize` for the application and
+`arize-operator` for the operator. The basic secret
+contains only the sensitive values this install would otherwise put in
+`values.yaml`:
+
+- Every install: `hubJwt`, `postgresPassword`, and `cipherKey`.
+- GCP without Workload Identity: `gcpServiceAccountJsonKey`.
+- Azure without Workload Identity: `azureStorageAccountKey`.
+- OCI: `ociS3AccessKeyId` and `ociS3SecretAccessKey`.
+- MinIO: `minioPassword`.
+- Ceph, including IBM, OpenShift, Rancher/bare metal, and single-host:
+  `cephS3AccessKeyId` and `cephS3SecretAccessKey`.
+- AWS using IRSA or the node role: no additional cloud credential.
+
+Do not copy the offline Helm guide's full key list into a basic secret. Add
+another documented key only when the user is configuring that feature. Omit
+every included key from `values.yaml`.
+
+Give the user the script below, adding only this install's cloud credential
+checks and `data` keys. For a cloud key, require its raw environment variable
+and add one `data` line whose value is `$(b64 "$VARIABLE")`. For the GCP JSON
+key, require `GCP_SERVICE_ACCOUNT_JSON_FILE` and set
+`gcpServiceAccountJsonKey` to
+`$(base64 < "$GCP_SERVICE_ACCOUNT_JSON_FILE" | tr -d '\n')`. Do not run the
+script, substitute secret values into it, or read the manifest it writes. The
+user exports the raw values in the same shell, runs the script, and replies
+`ready`. Tell the user that the script creates both the application and
+operator namespaces when they do not already exist. Its `data` values are
+base64 of the raw secrets, which is the same encoding Helm stores from
+`values.yaml`. The cipher pipeline is the release Helm guide's 32-character
+command.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+: "${KUBE_CONTEXT:?export the confirmed context}"
+: "${JWT:?export JWT in this shell}"
+: "${POSTGRES_PASSWORD:?export POSTGRES_PASSWORD in this shell}"
+# Require the selected cloud credential here before creating the manifest.
+# Azure: AZURE_STORAGE_ACCOUNT_KEY
+# GCP: GCP_SERVICE_ACCOUNT_JSON_FILE
+# OCI: OCI_S3_ACCESS_KEY_ID and OCI_S3_SECRET_ACCESS_KEY
+# MinIO: MINIO_PASSWORD
+# Ceph: CEPH_S3_ACCESS_KEY_ID and CEPH_S3_SECRET_ACCESS_KEY
+
+SECRET_NAME="${SECRET_NAME:-arize-super-secret}"
+APPLICATION_NAMESPACE="${APPLICATION_NAMESPACE:-arize}"
+OPERATOR_NAMESPACE="${OPERATOR_NAMESPACE:-arize-operator}"
+[[ "${SECRET_NAME}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || exit 1
+[[ "${APPLICATION_NAMESPACE}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || exit 1
+[[ "${OPERATOR_NAMESPACE}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || exit 1
+
+b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
+set +o pipefail
+CIPHER_B64="$(cat /dev/urandom | LC_ALL=C tr -dc 'a-zA-Z0-9' | head -c 32 | base64 | tr -d '\n')"
+set -o pipefail
+[[ "${#CIPHER_B64}" -eq 44 ]] || exit 1
+
+# The operator ServiceAccount pulls its own image before it can read the super
+# secret. For the Arize hub, that credential is hub-json-key.
+PULL_REGISTRY="${PULL_REGISTRY:-ch.hub.arize.com}"
+PULL_SECRET_DOCS=""
+if [[ "${PULL_REGISTRY}" == "ch.hub.arize.com" ]]; then
+  registry_auth="$(printf '%s' "_json_key:${JWT}" | base64 | tr -d '\n')"
+  dockerconfig="$(printf '{"auths":{"%s":{"auth":"%s"}}}' "${PULL_REGISTRY}" "${registry_auth}")"
+  DOCKERCONFIG_B64="$(printf '%s' "${dockerconfig}" | base64 | tr -d '\n')"
+  PULL_SECRET_DOCS="$(cat <<PULL
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hub-json-key
+  namespace: ${OPERATOR_NAMESPACE}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: ${DOCKERCONFIG_B64}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hub-json-key
+  namespace: ${APPLICATION_NAMESPACE}
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: ${DOCKERCONFIG_B64}
+PULL
+)"
+fi
+
+ensure_namespace() {
+  local namespace="$1"
+  if ! kubectl --context "$KUBE_CONTEXT" get namespace "$namespace" >/dev/null 2>&1; then
+    kubectl --context "$KUBE_CONTEXT" create namespace "$namespace" >/dev/null
+  fi
+}
+ensure_namespace "$APPLICATION_NAMESPACE"
+ensure_namespace "$OPERATOR_NAMESPACE"
+manifest="$(mktemp)"
+chmod 600 "$manifest"
+trap 'rm -f "$manifest"' EXIT
+cat > "$manifest" <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${SECRET_NAME}
+  namespace: ${OPERATOR_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: arize-operator
+    app.kubernetes.io/instance: arize-operator
+    operator.arize.com/watch: "true"
+type: Opaque
+data:
+  hubJwt: $(b64 "$JWT")
+  postgresPassword: $(b64 "$POSTGRES_PASSWORD")
+  cipherKey: ${CIPHER_B64}
+${PULL_SECRET_DOCS}
+EOF
+kubectl --context "$KUBE_CONTEXT" apply -f "$manifest" >/dev/null
+printf 'namespaces ready: %s %s\n' "$APPLICATION_NAMESPACE" "$OPERATOR_NAMESPACE"
+printf 'created secret %s in namespace %s\n' "$SECRET_NAME" "$OPERATOR_NAMESPACE"
+if [[ -n "${PULL_SECRET_DOCS}" ]]; then
+  printf 'created registry pull secret hub-json-key\n'
+fi
+```
+
+Users commonly have not created either Arize namespace before installation.
+The script creates the application namespace and the operator namespace when
+either is missing, then creates the Secret in the operator namespace. Do not
+ask the user to create the namespaces separately, and do not create them
+yourself.
+
+The operator ServiceAccount pulls `hub-json-key` before the operator can read
+the super secret. The chart normally builds that secret from `hubJwt`. With
+`hubJwt` omitted, Helm writes an unusable credential and the operator image
+pull returns 401. When `pullRegistry` is the central registry
+`ch.hub.arize.com`, the script also creates `hub-json-key` in both namespaces.
+Its docker auth is `_json_key:` plus the raw JWT, which is the chart helper's
+encoding. Set `PULL_REGISTRY` in the script to the selected registry. Do not
+create `hub-json-key` for a private registry.
+
+After the user reports that the script succeeded, confirm `createNamespaces`,
+`namespaceArize`, `namespaceOperator`, and `customPullSecret` in the release
+schema. Set:
+
+```yaml
+createNamespaces: false
+namespaceArize: "<application-namespace>"
+namespaceOperator: "<operator-namespace>"
+secretCreation: "<agreed-secret-name>"
+customPullSecret: "hub-json-key" # only when the script created hub-json-key
+```
+
+`customPullSecret` makes the chart use the pre-created secret instead of
+replacing it from an empty `hubJwt`. Omit `customPullSecret` when the script
+did not create `hub-json-key`.
+
+The script's success lines are the confirmation that both namespaces, the
+super secret, and, when present, `hub-json-key` exist. Do not get, describe,
+or otherwise read those Secrets. The safe kubectl wrapper rejects those reads.
+
+#### Option 2: placeholders
+
 Have the user create secret values outside chat. When `values.yaml` contains
 the placeholders `<HUB_JWT_BASE64>`, `<POSTGRES_PASSWORD_BASE64>`, and
 `<CIPHER_KEY_BASE64>`, explain each mapping and include these commands for the
-user to run locally:
+user to run locally. Use the same treatment for a cloud credential that would
+otherwise be written into `values.yaml`, such as `<AZURE_STORAGE_ACCOUNT_KEY_BASE64>`
+or `<GCP_SERVICE_ACCOUNT_JSON_KEY_BASE64>`.
 
 ```bash
 # <HUB_JWT_BASE64>: base64 of the raw Arize JWT
@@ -534,11 +718,13 @@ release schema and platform walkthrough decide each field.
 
 Create a structurally complete file with clearly named placeholders, then have
 the user replace secret placeholders through their approved process. Tell them
-to reply `ready` only after all three values are saved. Then check for
-unresolved placeholders without displaying surrounding values:
+to reply `ready` only after all three values are saved. Do not open
+`values.yaml` after that point, including with a file read, `cat`, `yq`, or
+`helm template`. Check for unresolved placeholders by printing only the
+placeholder tokens:
 
 ```bash
-grep -En '<[A-Z0-9_-]+>' values.yaml
+grep -Eo '<[A-Z0-9_-]+>' values.yaml || true
 ```
 
 Run a local chart check:
@@ -564,6 +750,7 @@ Application namespace:
 Operator namespace:
 Cluster sizing:
 Image source/registry:
+Secret storage:
 values.yaml path:
 Command:
 ```
@@ -573,6 +760,8 @@ Confirm that:
 - The user recognizes the context and cluster.
 - Infrastructure is complete.
 - `values.yaml` passed local checks and contains no placeholders.
+- Secret storage is either `secretCreation` plus a user-created super secret, or
+  inline values the user replaced outside chat.
 - Secrets were supplied outside chat and the file mode is `600`.
 - The selected command matches the release's offline docs.
 

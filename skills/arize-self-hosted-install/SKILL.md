@@ -33,9 +33,10 @@ chart, offline documentation, examples, and optional Terraform modules.
 - **Customer-cluster scope:** run every direct kubectl operation through the
   bundled [safe kubectl wrapper](scripts/safe-kubectl.sh), only for the
   user-confirmed customer-owned target. The wrapper permits validation and
-  localhost tunnels but rejects `delete` and other mutations. Release-owned
-  `arize.sh` and Helm perform installation separately after the mutation gate.
-  Never use this workflow against the Arize-managed fleet.
+  localhost tunnels but rejects `delete`, other mutations, and reads of Secret
+  objects. Release-owned `arize.sh` and Helm perform installation separately
+  after the mutation gate. Never use this workflow against the Arize-managed
+  fleet.
 - **Mutation gate:** show and confirm the exact install target and command
   immediately before changing the cluster.
 - **Local tunnel gate:** prefer the release-owned `arize.sh open-ports`; disclose
@@ -122,9 +123,15 @@ for user confirmation.
 
 Build `values.yaml` from the selected platform walkthrough, release chart
 schema, and offline docs using the
-[installation reference](references/REFERENCE.md). Confirm cloud mapping,
-sizing, infrastructure outputs, encoding, and ingress. Keep secrets outside
-chat, then run only local, non-secret-bearing checks.
+[installation reference](references/REFERENCE.md). Before writing sensitive
+fields, ask the user to choose either a super secret or inline placeholders.
+For a super secret, give the user the reference script to run. The script
+creates both namespaces when they are missing, and creates the `hub-json-key`
+registry credential when images come from the Arize hub. Set `secretCreation`
+to its name, set `createNamespaces: false`, set `customPullSecret` when that
+credential is created, and omit sensitive values. For placeholders,
+keep the current replacement workflow. Do not run the secret script, read
+Secret objects, or open `values.yaml` after it contains secrets.
 
 ### 6. Install with an explicit confirmation gate
 
