@@ -127,11 +127,14 @@ schema, and offline docs using the
 fields, ask the user to choose either a super secret or inline placeholders.
 For a super secret, give the user the reference script to run. The script
 creates both namespaces when they are missing, and creates the `hub-json-key`
-registry credential when images come from the Arize hub. Set `secretCreation`
-to its name, set `createNamespaces: false`, set `customPullSecret` when that
-credential is created, and omit sensitive values. For placeholders,
-keep the current replacement workflow. Do not run the secret script, read
-Secret objects, or open `values.yaml` after it contains secrets.
+registry credential in the operator namespace and the application namespace
+when images come from the Arize hub. The operator pull uses the operator
+namespace copy; a secret only in the application namespace leaves that pull
+unauthorized. Set `secretCreation` to its name, set `createNamespaces: false`,
+set `customPullSecret` when that credential is created, and omit sensitive
+values. For placeholders, keep the current replacement workflow. Do not run the
+secret script, read Secret objects, or open `values.yaml` after it contains
+secrets.
 
 ### 6. Install with an explicit confirmation gate
 

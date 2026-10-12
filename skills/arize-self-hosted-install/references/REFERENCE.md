@@ -645,7 +645,12 @@ kubectl --context "$KUBE_CONTEXT" apply -f "$manifest" >/dev/null
 printf 'namespaces ready: %s %s\n' "$APPLICATION_NAMESPACE" "$OPERATOR_NAMESPACE"
 printf 'created secret %s in namespace %s\n' "$SECRET_NAME" "$OPERATOR_NAMESPACE"
 if [[ -n "${PULL_SECRET_DOCS}" ]]; then
-  printf 'created registry pull secret hub-json-key\n'
+  kubectl --context "$KUBE_CONTEXT" -n "$OPERATOR_NAMESPACE" \
+    get secret hub-json-key -o name >/dev/null
+  kubectl --context "$KUBE_CONTEXT" -n "$APPLICATION_NAMESPACE" \
+    get secret hub-json-key -o name >/dev/null
+  printf 'created registry pull secret hub-json-key in %s and %s\n' \
+    "$OPERATOR_NAMESPACE" "$APPLICATION_NAMESPACE"
 fi
 ```
 
@@ -655,14 +660,19 @@ either is missing, then creates the Secret in the operator namespace. Do not
 ask the user to create the namespaces separately, and do not create them
 yourself.
 
-The operator ServiceAccount pulls `hub-json-key` before the operator can read
-the super secret. The chart normally builds that secret from `hubJwt`. With
-`hubJwt` omitted, Helm writes an unusable credential and the operator image
-pull returns 401. When `pullRegistry` is the central registry
-`ch.hub.arize.com`, the script also creates `hub-json-key` in both namespaces.
-Its docker auth is `_json_key:` plus the raw JWT, which is the chart helper's
-encoding. Set `PULL_REGISTRY` in the script to the selected registry. Do not
-create `hub-json-key` for a private registry.
+The operator ServiceAccount runs in the operator namespace and pulls
+`hub-json-key` from that namespace before the operator can read the super
+secret. A `hub-json-key` that exists only in the application namespace does
+not satisfy that pull. The chart normally builds this secret from `hubJwt`.
+With `hubJwt` omitted, Helm writes an unusable credential and the operator
+image pull returns 401. When `pullRegistry` is the central registry
+`ch.hub.arize.com`, the script creates `hub-json-key` in the operator
+namespace and again in the application namespace. Its docker auth is
+`_json_key:` plus the raw JWT, which is the chart helper's encoding. Set
+`PULL_REGISTRY` in the script to the selected registry. Do not create
+`hub-json-key` for a private registry. The script checks that both objects
+exist by name and exits if either is missing. Do not replace that check with
+a read of the secret contents.
 
 After the user reports that the script succeeded, confirm `createNamespaces`,
 `namespaceArize`, `namespaceOperator`, and `customPullSecret` in the release
@@ -677,8 +687,10 @@ customPullSecret: "hub-json-key" # only when the script created hub-json-key
 ```
 
 `customPullSecret` makes the chart use the pre-created secret instead of
-replacing it from an empty `hubJwt`. Omit `customPullSecret` when the script
-did not create `hub-json-key`.
+replacing it from an empty `hubJwt`. It does not create `hub-json-key`. Omit
+`customPullSecret` when the script did not create `hub-json-key`. The script
+must report `hub-json-key` in the operator namespace. If that line names only
+the application namespace, stop; the operator cannot pull its image.
 
 The script's success lines are the confirmation that both namespaces, the
 super secret, and, when present, `hub-json-key` exist. Do not get, describe,
