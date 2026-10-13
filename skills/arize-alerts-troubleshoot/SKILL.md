@@ -172,6 +172,71 @@ it is missing, read ConfigMap `arizeapp` in the operator namespace:
 Do not search the filesystem for alternate values files. If both sources are
 unavailable, ask the user. Details: [distribution guide](references/distribution.md).
 
+### Bring-up blockers before Prometheus exists
+
+Before opening port-forwards, confirm something is actually running to query.
+If the `arize` namespace has no pods, or the operator pod itself is not
+`Running`, there are no firing alerts to pull yet — that is not a clean bill
+of health, it means nothing has deployed:
+
+```bash
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$OPERATOR_NS" get pods
+"$SKILL_ROOT/scripts/safe-kubectl.sh" -n "$ARIZE_NAMESPACE" get pods
+```
+
+**`ImagePullBackOff` / `ErrImagePull`, especially against the Arize image hub
+(`ch.hub.arize.com` or another configured hub host):** `describe` the pod for
+the exact kubelet error. A `401 Unauthorized` from the hub's OAuth token
+endpoint is a `hubJwt` encoding or entitlement problem, not a Prometheus
+alert. **Check encoding integrity before escalating to Arize about the
+license:**
+
+```bash
+python3 "$SKILL_ROOT/scripts/check-secret-encoding.py" \
+  ${ARIZE_DISTRIBUTION_ROOT:+--distribution-root "$ARIZE_DISTRIBUTION_ROOT"} \
+  --operator-namespace "$OPERATOR_NS"
+```
+
+This decodes `hubJwt`, `postgresPassword`, and `cipherKey` from local
+`values.yaml` and the cluster's `arize-secrets`/`hub-json-key` secrets, and
+reports whether each decoded credential contains stray whitespace. The most
+common cause is the seeding pipeline using `echo` instead of `echo -n`, or
+dropping `tr -d '\n'` on the base64 output, which embeds a trailing or
+mid-string newline in the value — see the "Seed hubJwt (license JWT)" /
+"Set postgresPassword and cipherKey" steps in your cloud's detailed install
+walkthrough (`docs-search.py --query "seed hubJwt license JWT"` for the
+citation).
+
+A JWT with this defect passes a naive check: it is valid base64, and its
+payload segment still parses as JSON with plausible-looking claims (`iat`,
+`exp`). **Decoding the payload and seeing valid-looking claims is not
+evidence the credential is intact** — the payload segment is untouched by a
+trailing-newline bug; only the byte-for-byte credential (or the signature
+segment) shows it. Always run `check-secret-encoding.py`, or manually check
+the fully decoded credential for whitespace, before concluding a hub 401 is a
+licensing/entitlement issue and asking the user to chase that with Arize. The
+script never prints any secret, JWT, or decoded credential bytes — only
+whitespace positions and byte counts.
+
+**`cipherKey` findings need an extra step before you act on them.**
+`hubJwt` and `postgresPassword` are guaranteed printable text by their
+documented generation methods, so any whitespace byte in either is
+unambiguous corruption (exit `1`). `cipherKey` may legitimately be raw random
+binary instead of the doc's alphanumeric-source example, and raw binary can
+contain a whitespace-range byte purely by chance — indistinguishable from
+real corruption unless it also matches the bug's exact signature (a single
+stray LF as the very last byte). A `cipherKey` hit that doesn't match that
+signature comes back as exit `4`, low-confidence, and the script's own output
+says not to act on it alone. **Do not tell the user to re-seed or rotate
+`cipherKey` on a low-confidence finding** — ask whether it was generated as
+raw binary first. Rotating a working `cipherKey` can make data already
+encrypted under it unreadable, which is a much worse outcome than a false
+alarm.
+
+If a high-confidence finding is confirmed, fix `values.yaml` per the relevant
+seed doc and re-run the install/upgrade (a write action outside this skill's
+scope) so the affected secret regenerates.
+
 ### 2. Open ports (API-first)
 
 ```bash
