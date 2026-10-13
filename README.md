@@ -161,6 +161,7 @@ export AM="http://localhost:9093/alertmanager"
 |---|---|---|
 | `arize-alerts-troubleshoot` | [`skills/arize-alerts-troubleshoot/`](skills/arize-alerts-troubleshoot/) | Diagnose firing self-hosted alerts using read-only kubectl / Prometheus / Alertmanager access and the local distribution docs |
 | `arize-self-hosted-install` | [`skills/arize-self-hosted-install/`](skills/arize-self-hosted-install/) | Guide a first-time install: select or download a distribution, prepare `values.yaml`, run `arize.sh`, and validate the deployment, without provisioning infrastructure |
+| `arize-docs-validator` | [`skills/arize-docs-validator/`](skills/arize-docs-validator/) | Check self-hosting docs (source or live site) for broken images, broken links, and missing diagrams |
 
 Each skill lives under `skills/<name>/` with a `SKILL.md` entrypoint, optional
 `references/`, and helper `scripts/`.
